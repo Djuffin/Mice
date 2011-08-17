@@ -46,11 +46,11 @@ namespace Mice
 		{
 			TypeDefinition prototypeType = CreatePrototypeType(type);
 
-			FieldDefinition prototypeField = new FieldDefinition("Prototype", FieldAttributes.Public, prototypeType);
+			FieldDefinition prototypeField = new FieldDefinition(type.Name + "Prototype", FieldAttributes.Public, prototypeType);
 			type.Fields.Add(prototypeField);
 
 			//create delegate types & fields, patch methods to call delegates
-			foreach (var method in type.Methods.Where(m => m.IsPublic && !m.IsStatic))
+			foreach (var method in type.Methods.Where(m => m.IsPublic && !m.IsStatic && !m.IsAbstract))
 			{
 				var delegateType = CreateDeligateType(method, prototypeType);
 				var delegateField = CreateDeligateField(prototypeType, method, delegateType);
@@ -131,8 +131,6 @@ namespace Mice
 			TypeReference voidType = parentType.Module.Import(typeof(void));
 			TypeReference objectType = parentType.Module.Import(typeof(object));
 			TypeReference intPtrType = parentType.Module.Import(typeof(IntPtr));
-			TypeReference asyncResultType = parentType.Module.Import(typeof(IAsyncResult));
-			TypeReference asyncCallbackType = parentType.Module.Import(typeof(AsyncCallback));
 
 			TypeDefinition result = new TypeDefinition(null, deligateName,
 				TypeAttributes.Sealed | TypeAttributes.NestedPublic | TypeAttributes.RTSpecialName , multicastDeligateType);
@@ -159,30 +157,6 @@ namespace Mice
 				invoke.Parameters.Add(new ParameterDefinition(param.Name, param.Attributes, param.ParameterType));
 			}
 			result.Methods.Add(invoke); 
-
-			/*
-			//create BeginInvoke
-			var begininvoke = new MethodDefinition("BeginInvoke", 
-				MethodAttributes.Public | MethodAttributes.HideBySig |
-				MethodAttributes.NewSlot | MethodAttributes.Virtual, asyncResultType);
-			begininvoke.IsRuntime = true;
-			begininvoke.Parameters.Add(new ParameterDefinition("self", ParameterAttributes.None, method.DeclaringType));
-			foreach (var param in method.Parameters)
-			{
-				begininvoke.Parameters.Add(new ParameterDefinition(param.Name, param.Attributes, param.ParameterType));
-			}
-			begininvoke.Parameters.Add(new ParameterDefinition("callback", ParameterAttributes.None, asyncCallbackType));
-			begininvoke.Parameters.Add(new ParameterDefinition("object", ParameterAttributes.None, objectType));
-			result.Methods.Add(begininvoke);
-
-			//create EndInvoke
-			var endinvoke = new MethodDefinition("EndInvoke", 
-				MethodAttributes.Public | MethodAttributes.HideBySig |
-				MethodAttributes.NewSlot | MethodAttributes.Virtual, method.ReturnType);
-			endinvoke.IsRuntime = true;
-			endinvoke.Parameters.Add(new ParameterDefinition("result", ParameterAttributes.None, asyncResultType));
-			result.Methods.Add(endinvoke);
-			 */ 
 
 			result.DeclaringType = parentType;
 			parentType.NestedTypes.Add(result);
