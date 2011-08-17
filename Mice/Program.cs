@@ -54,12 +54,16 @@ namespace Mice
 			type.Fields.Add(staticPrototypeField);
 
 			//create delegate types & fields, patch methods to call delegates
-			foreach (var method in type.Methods.Where(m => m.IsPublic && !m.IsStatic && !m.IsAbstract))
+			foreach (var method in type.Methods.Where(m => m.IsPublic && !m.IsAbstract))
 			{
 				var delegateType = CreateDeligateType(method, prototypeType);
 				var delegateField = CreateDeligateField(prototypeType, method, delegateType);
 				AddStaticPrototypeCall(method, delegateField, staticPrototypeField);
-				AddInstancePrototypeCall(method, delegateField, prototypeField);
+
+				if (!method.IsStatic)
+				{
+					AddInstancePrototypeCall(method, delegateField, prototypeField);
+				}
 			}
 		}
 
@@ -71,6 +75,7 @@ namespace Mice
 
 			TypeDefinition delegateType = delegateField.FieldType.Resolve();
 			var invokeMethod = delegateType.Methods.Single(m => m.Name == "Invoke");
+			int allParamsCount = method.Parameters.Count + (method.IsStatic ? 0 : 1); //all params and maybe this
 
 			var instructions = new[]
 			{
@@ -81,7 +86,7 @@ namespace Mice
 				il.Create(OpCodes.Ldsflda, prototypeField),
 				il.Create(OpCodes.Ldfld, delegateField),
 			}.Concat(
-				Enumerable.Range(0, method.Parameters.Count + 1).Select(i => il.Create(OpCodes.Ldarg, i))
+			Enumerable.Range(0, allParamsCount).Select(i => il.Create(OpCodes.Ldarg, i))
 			).Concat(new[]
 			{
 				il.Create(OpCodes.Callvirt, invokeMethod),
@@ -100,6 +105,7 @@ namespace Mice
 
 			TypeDefinition  delegateType = delegateField.FieldType.Resolve();
 			var invokeMethod = delegateType.Methods.Single(m => m.Name == "Invoke");
+			int allParamsCount = method.Parameters.Count + 1; //all params and this
 
 			var instructions = new[]
 			{
@@ -112,7 +118,7 @@ namespace Mice
 				il.Create(OpCodes.Ldflda, prototypeField),
 				il.Create(OpCodes.Ldfld, delegateField),
 			}.Concat(
-				Enumerable.Range(0, method.Parameters.Count + 1).Select(i => il.Create(OpCodes.Ldarg, i))
+				Enumerable.Range(0, allParamsCount).Select(i => il.Create(OpCodes.Ldarg, i))
 			).Concat(new[]
 			{
 				il.Create(OpCodes.Callvirt, invokeMethod),
@@ -184,7 +190,10 @@ namespace Mice
 				MethodAttributes.Public | MethodAttributes.HideBySig |
 				MethodAttributes.NewSlot | MethodAttributes.Virtual, method.ReturnType);
 			invoke.IsRuntime = true;
-			invoke.Parameters.Add(new ParameterDefinition("self", ParameterAttributes.None, method.DeclaringType));
+			if (!method.IsStatic)
+			{
+				invoke.Parameters.Add(new ParameterDefinition("self", ParameterAttributes.None, method.DeclaringType));
+			}
 			foreach (var param in method.Parameters)
 			{
 				invoke.Parameters.Add(new ParameterDefinition(param.Name, param.Attributes, param.ParameterType));

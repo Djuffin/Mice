@@ -27,11 +27,12 @@ namespace Mice.Tests
 			Soldier s = new Soldier();
 			s.Rank = Rank.Captain;
 			Assert.That(s.Rank, Is.EqualTo(Rank.Captain));
-			Soldier.StaticPrototype.get_Rank = delegate
-									 {
-										 return Rank.Lieutenant;
-									 };
+			Soldier.StaticPrototype.get_Rank = self => Rank.Lieutenant;
 			Assert.That(s.Rank, Is.EqualTo(Rank.Lieutenant));
+
+			Assert.That(Person.IsThereTrueLove, Is.EqualTo(false));
+			Person.StaticPrototype.get_IsThereTrueLove = () => true;
+			Assert.That(Person.IsThereTrueLove, Is.EqualTo(true));
 
 		}
 	}

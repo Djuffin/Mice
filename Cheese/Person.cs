@@ -7,6 +7,13 @@ namespace Cheese
 {
 	public class Person
 	{
+		private static bool _isThereTrueLove;
+		public static bool IsThereTrueLove
+		{
+			get { return _isThereTrueLove; }
+			set { _isThereTrueLove = value; }
+		}
+
 		private bool _isAlive;
 		public bool IsAlive
 		{
