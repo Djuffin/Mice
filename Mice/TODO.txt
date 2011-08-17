@@ -1,5 +1,5 @@
 ﻿0. inheritance. DONE
 1. static calls
-2. instance calls to static prototype
+2. instance calls to static prototype. DONE
 3. generic calls
 3. call to real method from callback

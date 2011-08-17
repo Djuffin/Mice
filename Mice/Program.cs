@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
+using System.Diagnostics;
 
 namespace Mice
 {
@@ -49,17 +50,51 @@ namespace Mice
 			FieldDefinition prototypeField = new FieldDefinition(type.Name + "Prototype", FieldAttributes.Public, prototypeType);
 			type.Fields.Add(prototypeField);
 
+			FieldDefinition staticPrototypeField = new FieldDefinition("StaticPrototype", FieldAttributes.Public | FieldAttributes.Static, prototypeType);
+			type.Fields.Add(staticPrototypeField);
+
 			//create delegate types & fields, patch methods to call delegates
 			foreach (var method in type.Methods.Where(m => m.IsPublic && !m.IsStatic && !m.IsAbstract))
 			{
 				var delegateType = CreateDeligateType(method, prototypeType);
 				var delegateField = CreateDeligateField(prototypeType, method, delegateType);
-				PatchMethod(method, delegateField, prototypeField);
+				AddStaticPrototypeCall(method, delegateField, staticPrototypeField);
+				AddInstancePrototypeCall(method, delegateField, prototypeField);
 			}
 		}
 
-		private static void PatchMethod(MethodDefinition method, FieldDefinition delegateField, FieldDefinition prototypeField)
+		private static void AddStaticPrototypeCall(MethodDefinition method, FieldDefinition delegateField, FieldDefinition prototypeField)
 		{
+			Debug.Assert(prototypeField.IsStatic);
+			var firstOpcode = method.Body.Instructions.First();
+			var il = method.Body.GetILProcessor();
+
+			TypeDefinition delegateType = delegateField.FieldType.Resolve();
+			var invokeMethod = delegateType.Methods.Single(m => m.Name == "Invoke");
+
+			var instructions = new[]
+			{
+				il.Create(OpCodes.Ldsflda, prototypeField),
+				il.Create(OpCodes.Ldfld, delegateField),
+				il.Create(OpCodes.Brfalse, firstOpcode),
+
+				il.Create(OpCodes.Ldsflda, prototypeField),
+				il.Create(OpCodes.Ldfld, delegateField),
+			}.Concat(
+				Enumerable.Range(0, method.Parameters.Count + 1).Select(i => il.Create(OpCodes.Ldarg, i))
+			).Concat(new[]
+			{
+				il.Create(OpCodes.Callvirt, invokeMethod),
+				il.Create(OpCodes.Ret),
+			});
+
+			foreach (var instruction in instructions)
+				il.InsertBefore(firstOpcode, instruction);
+		}
+
+		private static void AddInstancePrototypeCall(MethodDefinition method, FieldDefinition delegateField, FieldDefinition prototypeField)
+		{
+			Debug.Assert(!prototypeField.IsStatic);
 			var firstOpcode = method.Body.Instructions.First();
 			var il = method.Body.GetILProcessor();
 
@@ -85,9 +120,7 @@ namespace Mice
 			});
 
 			foreach (var instruction in instructions)
-			{
 				il.InsertBefore(firstOpcode, instruction);
-			}
 		}
 
 		private static TypeDefinition CreatePrototypeType(TypeDefinition type)

@@ -41,12 +41,12 @@ namespace Cheese
 
 		private void TestStruct()
 		{
-			if (SomeNesterClassInst.o != null)
-				SomeNesterClassInst.o(new object());
+			if (SomeNestedClassInst.o != null)
+				SomeNestedClassInst.o(new object());
 		}
 
-		public SomeNesterClass SomeNesterClassInst;
-		public struct SomeNesterClass
+		public static SomeNestedClass SomeNestedClassInst;
+		public struct SomeNestedClass
 		{
 			public Action<object> o;
 		}
