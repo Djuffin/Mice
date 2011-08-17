@@ -5,6 +5,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mice", "Mice\Mice.csproj", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cheese", "Cheese\Cheese.csproj", "{9B0A57A1-93A3-42CE-8E75-70889CD0DC85}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mice.Tests", "Mice.Tests\Mice.Tests.csproj", "{4CBD953E-D225-419D-8C2D-61F3E13D5F98}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -35,6 +37,16 @@ Global
 		{9B0A57A1-93A3-42CE-8E75-70889CD0DC85}.Release|Mixed Platforms.ActiveCfg = Release|Any CPU
 		{9B0A57A1-93A3-42CE-8E75-70889CD0DC85}.Release|Mixed Platforms.Build.0 = Release|Any CPU
 		{9B0A57A1-93A3-42CE-8E75-70889CD0DC85}.Release|x86.ActiveCfg = Release|Any CPU
+		{4CBD953E-D225-419D-8C2D-61F3E13D5F98}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4CBD953E-D225-419D-8C2D-61F3E13D5F98}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4CBD953E-D225-419D-8C2D-61F3E13D5F98}.Debug|Mixed Platforms.ActiveCfg = Debug|Any CPU
+		{4CBD953E-D225-419D-8C2D-61F3E13D5F98}.Debug|Mixed Platforms.Build.0 = Debug|Any CPU
+		{4CBD953E-D225-419D-8C2D-61F3E13D5F98}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{4CBD953E-D225-419D-8C2D-61F3E13D5F98}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4CBD953E-D225-419D-8C2D-61F3E13D5F98}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4CBD953E-D225-419D-8C2D-61F3E13D5F98}.Release|Mixed Platforms.ActiveCfg = Release|Any CPU
+		{4CBD953E-D225-419D-8C2D-61F3E13D5F98}.Release|Mixed Platforms.Build.0 = Release|Any CPU
+		{4CBD953E-D225-419D-8C2D-61F3E13D5F98}.Release|x86.ActiveCfg = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -31,6 +31,8 @@ namespace Cheese
 
 		public Person()
 		{
+			//System.Diagnostics.Debugger.Break();
+			System.Diagnostics.Debugger.Log(1, "ad", "Person has been created");
 			_isAlive = true;
 		}
 
