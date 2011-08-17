@@ -31,6 +31,9 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="Cheese">
+      <HintPath>..\Cheese\bin\Debug\Cheese.dll</HintPath>
+    </Reference>
     <Reference Include="nunit.framework">
       <HintPath>..\lib\nunit\nunit.framework.dll</HintPath>
     </Reference>

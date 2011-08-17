@@ -24,15 +24,9 @@ namespace Mice
 			var assembly = AssemblyDefinition.ReadAssembly(victimName);
 			foreach (var type in assembly.Modules.SelectMany(m => m.Types).ToArray())
 			{
-				if (type.IsPublic)
+				if (type.IsPublic && !type.IsEnum)
 				{
-					CreatePrototypeType(type);
-				}
-				foreach (var method in type.Methods)
-				{
-					
-					//CallStub(method);
-					
+					ProcessType(type);
 				}
 			}
 
@@ -47,45 +41,91 @@ namespace Mice
 			Console.WriteLine("Usage: mice.exe assembly-name.dll");
 		}
 
-		private static void CallStub(MethodDefinition method)
+
+		private static void ProcessType(TypeDefinition type)
 		{
-			var firstInstruction = method.Body.Instructions.First();
-			var il = method.Body.GetILProcessor();
-			il.InsertBefore(firstInstruction, il.Create(OpCodes.Ldc_I4, 1));
-			il.InsertBefore(firstInstruction, il.Create(OpCodes.Ldstr, "cat"));
-			il.InsertBefore(firstInstruction, il.Create(OpCodes.Ldstr, "CALL:" + method.FullName));
+			TypeDefinition prototypeType = CreatePrototypeType(type);
 
-			var call = il.Create(OpCodes.Call,
-				method.Module.Import(
-					typeof(System.Diagnostics.Debugger).GetMethod("Log", new[] { typeof(int), typeof(string), typeof(string) })));
+			FieldDefinition prototypeField = new FieldDefinition("Prototype", FieldAttributes.Public, prototypeType);
+			type.Fields.Add(prototypeField);
 
-			il.InsertBefore(firstInstruction, call);
-			Console.WriteLine(method.FullName);
-
+			//create delegate types & fields, patch methods to call delegates
+			foreach (var method in type.Methods.Where(m => m.IsPublic && !m.IsStatic))
+			{
+				var delegateType = CreateDeligateType(method, prototypeType);
+				var delegateField = CreateDeligateField(prototypeType, method, delegateType);
+				PatchMethod(method, delegateField, prototypeField);
+			}
 		}
 
+		private static void PatchMethod(MethodDefinition method, FieldDefinition delegateField, FieldDefinition prototypeField)
+		{
+			var firstOpcode = method.Body.Instructions.First();
+			var il = method.Body.GetILProcessor();
 
+			TypeDefinition  delegateType = delegateField.FieldType.Resolve();
+			var invokeMethod = delegateType.Methods.Single(m => m.Name == "Invoke");
+
+			var instructions = new[]
+			{
+				il.Create(OpCodes.Ldarg_0),
+				il.Create(OpCodes.Ldflda, prototypeField),
+				il.Create(OpCodes.Ldfld, delegateField),
+				il.Create(OpCodes.Brfalse, firstOpcode),
+
+				il.Create(OpCodes.Ldarg_0),
+				il.Create(OpCodes.Ldflda, prototypeField),
+				il.Create(OpCodes.Ldfld, delegateField),
+			}.Concat(
+				Enumerable.Range(0, method.Parameters.Count + 1).Select(i => il.Create(OpCodes.Ldarg, i))
+			).Concat(new[]
+			{
+				il.Create(OpCodes.Callvirt, invokeMethod),
+				il.Create(OpCodes.Ret),
+			});
+
+			foreach (var instruction in instructions)
+			{
+				il.InsertBefore(firstOpcode, instruction);
+			}
+		}
 
 		private static TypeDefinition CreatePrototypeType(TypeDefinition type)
 		{
-			TypeDefinition result = new TypeDefinition(type.Namespace, "PrototypeClass", 
-				TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.NestedPublic, type.Module.Import(typeof(object)));
+			TypeDefinition result = new TypeDefinition(null, "PrototypeClass", 
+				TypeAttributes.Sealed | TypeAttributes.NestedPublic | TypeAttributes.BeforeFieldInit | TypeAttributes.SequentialLayout, 
+				type.Module.Import(typeof(ValueType)));
 			type.NestedTypes.Add(result);
 			result.DeclaringType = type;
-			type.Module.Types.Add(result);
 
-			foreach (var method in type.Methods.Where(m => m.IsPublic))
-			{
-				CreateDeligateType(method, result);
-			}
+			//create .ctor
+			var constructor = new MethodDefinition(".ctor", MethodAttributes.Public  
+				| MethodAttributes.RTSpecialName | MethodAttributes.SpecialName |MethodAttributes.HideBySig,
+				result.Module.Import(typeof(void)));
+			var ctorIl = constructor.Body.GetILProcessor();
+			ctorIl.Emit(OpCodes.Ldarg_0);
+			ctorIl.Emit(OpCodes.Call, type.Module.Import(typeof(object).GetConstructor(new Type[0])));
+			ctorIl.Emit(OpCodes.Ret);
+			result.Methods.Add(constructor);
 
 			return result;
+		}
+
+		private static FieldDefinition CreateDeligateField(TypeDefinition hostType, MethodDefinition method, TypeDefinition delegateType)
+		{
+			string paramsPostfix = string.Join("_", method.Parameters.Select(p => p.ParameterType.Name).ToArray());
+			string fieldName = (method.IsConstructor ? "Ctor" : method.Name) + paramsPostfix;
+
+			FieldDefinition field = new FieldDefinition(fieldName, FieldAttributes.Public, delegateType);
+			hostType.Fields.Add(field);
+			return field;
 		}
 
 		private static TypeDefinition CreateDeligateType(MethodDefinition method, TypeDefinition parentType)
 		{
 			string paramsPostfix = string.Join("_", method.Parameters.Select(p => p.ParameterType.Name).ToArray());
-			string deligateName = "Callback_" + method.Name + paramsPostfix;
+			string deligateName = "Callback_" + 
+				(method.IsConstructor ? "Ctor" : method.Name) + paramsPostfix;
 
 			TypeReference multicastDeligateType = parentType.Module.Import(typeof(MulticastDelegate));
 			TypeReference voidType = parentType.Module.Import(typeof(void));
@@ -94,8 +134,8 @@ namespace Mice
 			TypeReference asyncResultType = parentType.Module.Import(typeof(IAsyncResult));
 			TypeReference asyncCallbackType = parentType.Module.Import(typeof(AsyncCallback));
 
-			TypeDefinition result = new TypeDefinition(parentType.Namespace, deligateName,
-				TypeAttributes.Public | TypeAttributes.Sealed /*| TypeAttributes.NestedPublic*/, multicastDeligateType);
+			TypeDefinition result = new TypeDefinition(null, deligateName,
+				TypeAttributes.Sealed | TypeAttributes.NestedPublic | TypeAttributes.RTSpecialName , multicastDeligateType);
 
 			//create constructor
 			var constructor = new MethodDefinition(".ctor",
@@ -109,17 +149,24 @@ namespace Mice
 
 
 			//create Invoke
-			var invoke = new MethodDefinition("Invoke", method.Attributes, method.ReturnType);
+			var invoke = new MethodDefinition("Invoke", 
+				MethodAttributes.Public | MethodAttributes.HideBySig |
+				MethodAttributes.NewSlot | MethodAttributes.Virtual, method.ReturnType);
 			invoke.IsRuntime = true;
+			invoke.Parameters.Add(new ParameterDefinition("self", ParameterAttributes.None, method.DeclaringType));
 			foreach (var param in method.Parameters)
 			{
 				invoke.Parameters.Add(new ParameterDefinition(param.Name, param.Attributes, param.ParameterType));
 			}
 			result.Methods.Add(invoke); 
 
+			/*
 			//create BeginInvoke
-			var begininvoke = new MethodDefinition("BeginInvoke", method.Attributes, asyncResultType);
+			var begininvoke = new MethodDefinition("BeginInvoke", 
+				MethodAttributes.Public | MethodAttributes.HideBySig |
+				MethodAttributes.NewSlot | MethodAttributes.Virtual, asyncResultType);
 			begininvoke.IsRuntime = true;
+			begininvoke.Parameters.Add(new ParameterDefinition("self", ParameterAttributes.None, method.DeclaringType));
 			foreach (var param in method.Parameters)
 			{
 				begininvoke.Parameters.Add(new ParameterDefinition(param.Name, param.Attributes, param.ParameterType));
@@ -129,14 +176,16 @@ namespace Mice
 			result.Methods.Add(begininvoke);
 
 			//create EndInvoke
-			var endinvoke = new MethodDefinition("EndInvoke", method.Attributes, method.ReturnType);
+			var endinvoke = new MethodDefinition("EndInvoke", 
+				MethodAttributes.Public | MethodAttributes.HideBySig |
+				MethodAttributes.NewSlot | MethodAttributes.Virtual, method.ReturnType);
 			endinvoke.IsRuntime = true;
 			endinvoke.Parameters.Add(new ParameterDefinition("result", ParameterAttributes.None, asyncResultType));
 			result.Methods.Add(endinvoke);
+			 */ 
 
-			//result.DeclaringType = parentType;
-			//parentType.NestedTypes.Add(result);
-			parentType.Module.Types.Add(result);
+			result.DeclaringType = parentType;
+			parentType.NestedTypes.Add(result);
 			return result;
 		}
 	}

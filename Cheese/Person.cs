@@ -31,14 +31,24 @@ namespace Cheese
 
 		public Person()
 		{
-			//System.Diagnostics.Debugger.Break();
-			System.Diagnostics.Debugger.Log(1, "ad", "Person has been created");
 			_isAlive = true;
 		}
 
 		public void Kill()
 		{
 			_isAlive = false;
+		}
+
+		private void TestStruct()
+		{
+			if (SomeNesterClassInst.o != null)
+				SomeNesterClassInst.o(new object());
+		}
+
+		public SomeNesterClass SomeNesterClassInst;
+		public struct SomeNesterClass
+		{
+			public Action<object> o;
 		}
 	}
 }

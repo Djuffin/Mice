@@ -41,12 +41,7 @@
   <ItemGroup>
     <Compile Include="Person.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\Mice\Mice.csproj">
-      <Project>{458EAA40-687E-41E2-94E9-6CDB8DF0B55B}</Project>
-      <Name>Mice</Name>
-    </ProjectReference>
+    <Compile Include="Soldier.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
