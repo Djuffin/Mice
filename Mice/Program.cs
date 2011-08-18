@@ -51,7 +51,8 @@ namespace Mice
 		private static bool IsTypeToBeProcessed(TypeDefinition type)
 		{
 			return type.IsPublic && 
-				!type.IsEnum && 
+				!type.IsEnum &&
+				type.GenericParameters.Count == 0 &&
 				!type.IsValueType && 
 				type.BaseType.Name != "MulticastDelegate";
 		}
@@ -92,6 +93,7 @@ namespace Mice
 		private static bool IsMethodToBeProcessed(MethodDefinition m)
 		{
 			return m.IsPublic && 
+				m.GenericParameters.Count == 0 &&
 				!m.IsAbstract && 
 				!(m.IsStatic && m.IsConstructor);
 		}
