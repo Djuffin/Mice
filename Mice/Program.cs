@@ -27,12 +27,9 @@ namespace Mice
 			try
 			{
 				var assembly = AssemblyDefinition.ReadAssembly(victimName);
-				foreach (var type in assembly.Modules.SelectMany(m => m.Types).ToArray())
+				foreach (var type in assembly.Modules.SelectMany(m => m.Types).Where(IsTypeToBeProcessed).ToArray())
 				{
-					if (IsTypeToBeProcessed(type))
-					{
-						ProcessType(type);
-					}
+					ProcessType(type);
 				}
 
 				var writerParams = new WriterParameters();
@@ -76,7 +73,7 @@ namespace Mice
 			type.Fields.Add(staticPrototypeField);
 
 			//create delegate types & fields, patch methods to call delegates
-			foreach (var method in type.Methods.Where(m => m.IsPublic && !m.IsAbstract).ToArray())
+			foreach (var method in type.Methods.Where(IsMethodToBeProcessed).ToArray())
 			{
 				var delegateType = CreateDeligateType(method, prototypeType);
 				var delegateField = CreateDeligateField(prototypeType, method, delegateType);
@@ -92,12 +89,31 @@ namespace Mice
 			}
 		}
 
+		private static bool IsMethodToBeProcessed(MethodDefinition m)
+		{
+			return m.IsPublic && 
+				!m.IsAbstract && 
+				!(m.IsStatic && m.IsConstructor);
+		}
+
 		private static MethodDefinition MoveCodeToImplMethod(MethodDefinition method)
 		{
-			string name = method.IsConstructor ? "Ctor_Impl" : method.Name + "_Impl";
+			string name; 
+			if (method.IsConstructor)
+				name = "impl_Ctor";
+			else if (method.IsSetter && method.Name.StartsWith("set_"))
+				name = "set_impl_" + method.Name.Substring(4);
+			else if (method.IsGetter && method.Name.StartsWith("get_"))
+				name = "get_impl_" + method.Name.Substring(4);
+			else
+				name = "impl_" + method.Name;
+
 			MethodDefinition result = new MethodDefinition(name, method.Attributes, method.ReturnType);
+			result.SemanticsAttributes = method.SemanticsAttributes;
 			result.IsRuntimeSpecialName = false;
-			result.IsSpecialName = false;
+			if (method.IsConstructor)
+				result.IsSpecialName = false;
+
 			foreach (var param in method.Parameters)
 			{
 				result.Parameters.Add(new ParameterDefinition(param.Name, param.Attributes, param.ParameterType));
@@ -147,6 +163,24 @@ namespace Mice
 
 			method.DeclaringType.Methods.Add(result);
 
+			//registering a property if it's needed
+			if (result.IsGetter || result.IsSetter)
+			{
+				TypeReference propertyType = result.IsGetter ? result.ReturnType : result.Parameters[0].ParameterType;
+				string propertyName = result.Name.Substring(4);
+				var property = method.DeclaringType.Properties.FirstOrDefault(p => p.Name == propertyName);
+				if (property == null)
+				{
+					property = new PropertyDefinition(propertyName, PropertyAttributes.None, propertyType);
+					method.DeclaringType.Properties.Add(property);
+				}
+				if (result.IsGetter)
+					property.GetMethod = result;
+				else
+					property.SetMethod = result;
+				
+			}
+			
 			//repalce old method body
 			method.Body.Instructions.Clear();
 			method.Body.Variables.Clear();
@@ -154,11 +188,10 @@ namespace Mice
 			il = method.Body.GetILProcessor();
 			int allParamsCount = method.Parameters.Count + (method.IsStatic ? 0 : 1); //all params and maybe this
 			for (int i = 0; i < allParamsCount; i++)
-				il.Emit(OpCodes.Ldarg, i);
+			    il.Emit(OpCodes.Ldarg, i);
 
 			il.Emit(OpCodes.Call, result);
 			il.Emit(OpCodes.Ret);
-			
 			return result;
 		}
 

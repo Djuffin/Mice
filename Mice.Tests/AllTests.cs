@@ -21,8 +21,10 @@ namespace Mice.Tests
 								{
 									Assert.That(self, Is.SameAs(p));
 									Assert.That(name, Is.EqualTo("ABC"));
+									self.impl_Name = name;
 								};
 			p.Name = "ABC";
+			Assert.That(p.Name, Is.EqualTo("ABC"));
 			
 			Soldier s = new Soldier();
 			s.Rank = Rank.Captain;

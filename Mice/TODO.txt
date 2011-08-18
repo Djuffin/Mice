@@ -2,5 +2,6 @@
 1. static calls. DONE
 2. instance calls to static prototype. DONE
 3. generic calls
-4. call to real method from callback
+4. call to real method from callback. DONE
 5. sign assembly with .snk file. DONE
+6. Proper tests
