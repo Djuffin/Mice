@@ -10,7 +10,8 @@ namespace Cheese
 		Sergeant,
 		Lieutenant,
 		Captain,
-		Major
+		Major,
+		General
 	}
 
 	public class Soldier : Person
@@ -21,6 +22,12 @@ namespace Cheese
 		{
 			get { return _rank; }
 			set { _rank = value; }
+		}
+
+		public override void Kill()
+		{
+			base.Kill();
+			_rank = Rank.General; 
 		}
 	}
 }

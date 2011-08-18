@@ -41,21 +41,10 @@ namespace Cheese
 			_isAlive = true;
 		}
 
-		public void Kill()
+		public virtual void Kill()
 		{
 			_isAlive = false;
 		}
 
-		private void TestStruct()
-		{
-			if (SomeNestedClassInst.o != null)
-				SomeNestedClassInst.o(new object());
-		}
-
-		public static SomeNestedClass SomeNestedClassInst;
-		public struct SomeNestedClass
-		{
-			public Action<object> o;
-		}
 	}
 }

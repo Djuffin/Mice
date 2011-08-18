@@ -111,6 +111,7 @@ namespace Mice
 			MethodDefinition result = new MethodDefinition(name, method.Attributes, method.ReturnType);
 			result.SemanticsAttributes = method.SemanticsAttributes;
 			result.IsRuntimeSpecialName = false;
+			result.IsVirtual = false;
 			if (method.IsConstructor)
 				result.IsSpecialName = false;
 
