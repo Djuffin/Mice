@@ -5,6 +5,8 @@ using System.Text;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using System.Diagnostics;
+using StrongNameKeyPair = System.Reflection.StrongNameKeyPair;
+using System.IO;
 
 namespace Mice
 {
@@ -14,14 +16,15 @@ namespace Mice
 		static int Main(string[] args)
 		{
 		
-			if (args.Length != 1)
+			if (args.Length < 1)
 			{
 				Using();
 				return 1;
 			}
 
 			string victimName = args[0];
-
+			string keyFile = args.Length > 1 ? args[1] : null;
+			
 			var assembly = AssemblyDefinition.ReadAssembly(victimName);
 			foreach (var type in assembly.Modules.SelectMany(m => m.Types).ToArray())
 			{
@@ -31,7 +34,14 @@ namespace Mice
 				}
 			}
 
-			assembly.Write(victimName);
+			var writerParams = new WriterParameters();
+			if (!string.IsNullOrEmpty(keyFile) && File.Exists(keyFile))
+			{
+				StrongNameKeyPair keyPair = new StrongNameKeyPair(File.ReadAllBytes(keyFile));
+				writerParams.StrongNameKeyPair = keyPair;
+			}
+			
+			assembly.Write(victimName, writerParams);
 			return 0;
 
 			
@@ -39,7 +49,7 @@ namespace Mice
 
 		private static void Using()
 		{
-			Console.WriteLine("Usage: mice.exe assembly-name.dll");
+			Console.WriteLine("Usage: mice.exe assembly-name.dll [key-file.snk]");
 		}
 
 
