@@ -15,7 +15,6 @@ namespace Mice
 
 		static int Main(string[] args)
 		{
-		
 			if (args.Length < 1)
 			{
 				Using();
@@ -24,27 +23,40 @@ namespace Mice
 
 			string victimName = args[0];
 			string keyFile = args.Length > 1 ? args[1] : null;
-			
-			var assembly = AssemblyDefinition.ReadAssembly(victimName);
-			foreach (var type in assembly.Modules.SelectMany(m => m.Types).ToArray())
+
+			try
 			{
-				if (type.IsPublic && !type.IsEnum)
+				var assembly = AssemblyDefinition.ReadAssembly(victimName);
+				foreach (var type in assembly.Modules.SelectMany(m => m.Types).ToArray())
 				{
-					ProcessType(type);
+					if (IsTypeToBeProcessed(type))
+					{
+						ProcessType(type);
+					}
 				}
-			}
 
-			var writerParams = new WriterParameters();
-			if (!string.IsNullOrEmpty(keyFile) && File.Exists(keyFile))
+				var writerParams = new WriterParameters();
+				if (!string.IsNullOrEmpty(keyFile) && File.Exists(keyFile))
+				{
+					writerParams.StrongNameKeyPair = new StrongNameKeyPair(File.ReadAllBytes(keyFile));
+				}
+
+				assembly.Write(victimName, writerParams);
+				return 0;
+			}
+			catch (Exception e)
 			{
-				StrongNameKeyPair keyPair = new StrongNameKeyPair(File.ReadAllBytes(keyFile));
-				writerParams.StrongNameKeyPair = keyPair;
+				Console.WriteLine("Error. " + e.ToString());
+				return 1;
 			}
-			
-			assembly.Write(victimName, writerParams);
-			return 0;
+		}
 
-			
+		private static bool IsTypeToBeProcessed(TypeDefinition type)
+		{
+			return type.IsPublic && 
+				!type.IsEnum && 
+				!type.IsValueType && 
+				type.BaseType.Name != "MulticastDelegate";
 		}
 
 		private static void Using()
@@ -96,7 +108,7 @@ namespace Mice
 				il.Create(OpCodes.Ldsflda, prototypeField),
 				il.Create(OpCodes.Ldfld, delegateField),
 			}.Concat(
-			Enumerable.Range(0, allParamsCount).Select(i => il.Create(OpCodes.Ldarg, i))
+				Enumerable.Range(0, allParamsCount).Select(i => il.Create(OpCodes.Ldarg, i))
 			).Concat(new[]
 			{
 				il.Create(OpCodes.Callvirt, invokeMethod),
