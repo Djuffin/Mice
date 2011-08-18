@@ -10,7 +10,7 @@ using System.IO;
 
 namespace Mice
 {
-	class Program
+	static class Program
 	{
 
 		static int Main(string[] args)
@@ -76,10 +76,13 @@ namespace Mice
 			type.Fields.Add(staticPrototypeField);
 
 			//create delegate types & fields, patch methods to call delegates
-			foreach (var method in type.Methods.Where(m => m.IsPublic && !m.IsAbstract))
+			foreach (var method in type.Methods.Where(m => m.IsPublic && !m.IsAbstract).ToArray())
 			{
 				var delegateType = CreateDeligateType(method, prototypeType);
 				var delegateField = CreateDeligateField(prototypeType, method, delegateType);
+
+				MethodDefinition newMethod = MoveCodeToImplMethod(method);
+
 				AddStaticPrototypeCall(method, delegateField, staticPrototypeField);
 
 				if (!method.IsStatic)
@@ -87,6 +90,76 @@ namespace Mice
 					AddInstancePrototypeCall(method, delegateField, prototypeField);
 				}
 			}
+		}
+
+		private static MethodDefinition MoveCodeToImplMethod(MethodDefinition method)
+		{
+			string name = method.IsConstructor ? "Ctor_Impl" : method.Name + "_Impl";
+			MethodDefinition result = new MethodDefinition(name, method.Attributes, method.ReturnType);
+			result.IsRuntimeSpecialName = false;
+			result.IsSpecialName = false;
+			foreach (var param in method.Parameters)
+			{
+				result.Parameters.Add(new ParameterDefinition(param.Name, param.Attributes, param.ParameterType));
+			}
+			foreach (var variable in method.Body.Variables)
+			{
+				result.Body.Variables.Add(new VariableDefinition(variable.Name, variable.VariableType));
+			}
+			var il = result.Body.GetILProcessor();
+			foreach (var inst in method.Body.Instructions)
+			{
+				if (inst.Operand == null)
+					il.Emit(inst.OpCode);
+				else if (inst.Operand is TypeReference)
+					il.Emit(inst.OpCode, inst.Operand as TypeReference);
+				else if (inst.Operand is CallSite)
+					il.Emit(inst.OpCode, inst.Operand as CallSite);
+				else if (inst.Operand is MethodReference)
+					il.Emit(inst.OpCode, inst.Operand as MethodReference);
+				else if (inst.Operand is FieldReference)
+					il.Emit(inst.OpCode, inst.Operand as FieldReference);
+				else if (inst.Operand is string)
+					il.Emit(inst.OpCode, inst.Operand as string);
+				else if (inst.Operand is sbyte)
+					il.Emit(inst.OpCode, (sbyte)inst.Operand);
+				else if (inst.Operand is byte)
+					il.Emit(inst.OpCode, (byte)inst.Operand);
+				else if (inst.Operand is int)
+					il.Emit(inst.OpCode, (int)inst.Operand);
+				else if (inst.Operand is long)
+					il.Emit(inst.OpCode, (long)inst.Operand);
+				else if (inst.Operand is float)
+					il.Emit(inst.OpCode, (float)inst.Operand);
+				else if (inst.Operand is double)
+					il.Emit(inst.OpCode, (double)inst.Operand);
+				else if (inst.Operand is Instruction)
+					il.Emit(inst.OpCode, (Instruction)inst.Operand);
+				else if (inst.Operand is Instruction[])
+					il.Emit(inst.OpCode, (Instruction[])inst.Operand);
+				else if (inst.Operand is VariableDefinition)
+					il.Emit(inst.OpCode, (VariableDefinition)inst.Operand);
+				else if (inst.Operand is ParameterDefinition)
+					il.Emit(inst.OpCode, (ParameterDefinition)inst.Operand);
+				else
+					throw new NotSupportedException();
+			}
+
+			method.DeclaringType.Methods.Add(result);
+
+			//repalce old method body
+			method.Body.Instructions.Clear();
+			method.Body.Variables.Clear();
+			
+			il = method.Body.GetILProcessor();
+			int allParamsCount = method.Parameters.Count + (method.IsStatic ? 0 : 1); //all params and maybe this
+			for (int i = 0; i < allParamsCount; i++)
+				il.Emit(OpCodes.Ldarg, i);
+
+			il.Emit(OpCodes.Call, result);
+			il.Emit(OpCodes.Ret);
+			
+			return result;
 		}
 
 		private static void AddStaticPrototypeCall(MethodDefinition method, FieldDefinition delegateField, FieldDefinition prototypeField)
