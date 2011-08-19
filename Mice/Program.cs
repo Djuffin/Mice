@@ -54,6 +54,7 @@ namespace Mice
 				!type.IsEnum &&
 				type.GenericParameters.Count == 0 &&
 				!type.IsValueType && 
+				!type.IsInterface &&
 				type.BaseType.Name != "MulticastDelegate";
 		}
 
