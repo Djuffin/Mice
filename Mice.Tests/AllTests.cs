@@ -28,7 +28,7 @@ namespace Mice.Tests
 								{
 									Assert.That(self, Is.SameAs(p));
 									Assert.That(name, Is.EqualTo("ABC"));
-									self.impl_Name = name;
+									self.xName = name;
 								};
 			p.Name = "ABC";
 			Assert.That(p.Name, Is.EqualTo("ABC"));
@@ -54,7 +54,7 @@ namespace Mice.Tests
 			{
 				Assert.That(self, Is.SameAs(p));
 				Assert.That(name, Is.EqualTo("ABC"));
-				self.impl_Name = name;
+				self.xName = name;
 			};
 			p.Name = "ABC";
 
@@ -93,7 +93,7 @@ namespace Mice.Tests
 
 			Assert.That(p.IsAlive, Is.EqualTo(true));
 
-			p.impl_Kill();
+			p.xKill();
 			Assert.That(p.IsAlive, Is.EqualTo(false));
 		}
 
@@ -116,7 +116,7 @@ namespace Mice.Tests
 			Soldier s2 = new Soldier();
 			s2.Rank = Rank.Captain;
 			s2.SoldierPrototype.Kill = self => 
-				(self as Person).impl_Kill();
+				(self as Person).xKill();
 			s2.Kill();
 			Assert.That(s2.Rank, Is.EqualTo(Rank.Captain));
 			Assert.That(s2.IsAlive, Is.EqualTo(false));
@@ -132,7 +132,7 @@ namespace Mice.Tests
 			Soldier s2 = new Soldier();
 			Assert.That(s2.IsAlive, Is.EqualTo(false));
 
-			Soldier.StaticPrototype.Ctor = self => self.impl_Ctor();
+			Soldier.StaticPrototype.Ctor = self => self.xCtor();
 			Soldier s3 = new Soldier();
 			Assert.That(s3.IsAlive, Is.EqualTo(true));
 		}

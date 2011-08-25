@@ -108,15 +108,16 @@ namespace Mice
 
 		private static MethodDefinition MoveCodeToImplMethod(MethodDefinition method)
 		{
+			const string realImplementationPrefix = "x";
 			string name; 
 			if (method.IsConstructor)
-				name = "impl_Ctor";
+				name = realImplementationPrefix + "Ctor";
 			else if (method.IsSetter && method.Name.StartsWith("set_"))
-				name = "set_impl_" + method.Name.Substring(4);
+				name = "set_" + realImplementationPrefix + method.Name.Substring(4);
 			else if (method.IsGetter && method.Name.StartsWith("get_"))
-				name = "get_impl_" + method.Name.Substring(4);
+				name = "get_" + realImplementationPrefix + method.Name.Substring(4);
 			else
-				name = "impl_" + method.Name;
+				name = realImplementationPrefix + method.Name;
 
 			MethodDefinition result = new MethodDefinition(name, method.Attributes, method.ReturnType);
 			result.SemanticsAttributes = method.SemanticsAttributes;
