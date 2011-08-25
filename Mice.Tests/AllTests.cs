@@ -24,7 +24,7 @@ namespace Mice.Tests
 			Person p = new Person();
 			p.Kill();
 			var isAlive = p.IsAlive;
-			p.PersonPrototype.set_NameString = delegate(Person self, string name)
+			p.PersonPrototype.set_Name = delegate(Person self, string name)
 								{
 									Assert.That(self, Is.SameAs(p));
 									Assert.That(name, Is.EqualTo("ABC"));
@@ -50,7 +50,7 @@ namespace Mice.Tests
 		{
 			Person p = new Person();
 
-			p.PersonPrototype.set_NameString = delegate(Person self, string name)
+			p.PersonPrototype.set_Name = delegate(Person self, string name)
 			{
 				Assert.That(self, Is.SameAs(p));
 				Assert.That(name, Is.EqualTo("ABC"));
@@ -135,6 +135,18 @@ namespace Mice.Tests
 			Soldier.StaticPrototype.Ctor = self => self.impl_Ctor();
 			Soldier s3 = new Soldier();
 			Assert.That(s3.IsAlive, Is.EqualTo(true));
+		}
+
+		[Test]
+		public void OverloadsTest()
+		{
+			Assert.That(Calc.Add(1,2), Is.EqualTo(3));
+			Calc.StaticPrototype.Add_Int32_Int32 = (x, y) => 0;
+			Assert.That(Calc.Add(1, 2), Is.EqualTo(0));
+
+			Assert.That(Calc.Add(1.0, 2.0), Is.EqualTo(3.0));
+			Calc.StaticPrototype.Add_Double_Double= (x, y) => 1 + x + y;
+			Assert.That(Calc.Add(1.0, 2.0), Is.EqualTo(4.0));
 		}
 
 

@@ -74,11 +74,18 @@ namespace Mice
 			FieldDefinition staticPrototypeField = new FieldDefinition("StaticPrototype", FieldAttributes.Public | FieldAttributes.Static, prototypeType);
 			type.Fields.Add(staticPrototypeField);
 
+			MethodDefinition[] methods = type.Methods.Where(IsMethodToBeProcessed).ToArray();
+
+			
+			Dictionary<string, int> name2Count = methods.GroupBy(m => m.Name).ToDictionary(g => g.Key, g => g.Count());
+
 			//create delegate types & fields, patch methods to call delegates
-			foreach (var method in type.Methods.Where(IsMethodToBeProcessed).ToArray())
+			foreach (var method in methods)
 			{
-				var delegateType = CreateDeligateType(method, prototypeType);
-				var delegateField = CreateDeligateField(prototypeType, method, delegateType);
+				bool includeParamsToName = name2Count[method.Name] > 1;
+
+				var delegateType = CreateDeligateType(method, prototypeType, includeParamsToName);
+				var delegateField = CreateDeligateField(prototypeType, method, delegateType, includeParamsToName);
 
 				MethodDefinition newMethod = MoveCodeToImplMethod(method);
 
@@ -282,21 +289,23 @@ namespace Mice
 			return result;
 		}
 
-		private static FieldDefinition CreateDeligateField(TypeDefinition hostType, MethodDefinition method, TypeDefinition delegateType)
+		private static FieldDefinition CreateDeligateField(TypeDefinition hostType, MethodDefinition method, TypeDefinition delegateType, bool includeParamsToName)
 		{
 			string paramsPostfix = string.Join("_", method.Parameters.Select(p => p.ParameterType.Name).ToArray());
-			string fieldName = (method.IsConstructor ? "Ctor" : method.Name) + paramsPostfix;
+			string fieldName = (method.IsConstructor ? "Ctor" : method.Name) + 
+				(includeParamsToName && paramsPostfix.Length > 0 ? "_" + paramsPostfix : string.Empty); ;
 
 			FieldDefinition field = new FieldDefinition(fieldName, FieldAttributes.Public, delegateType);
 			hostType.Fields.Add(field);
 			return field;
 		}
 
-		private static TypeDefinition CreateDeligateType(MethodDefinition method, TypeDefinition parentType)
+		private static TypeDefinition CreateDeligateType(MethodDefinition method, TypeDefinition parentType, bool includeParamsToName)
 		{
 			string paramsPostfix = string.Join("_", method.Parameters.Select(p => p.ParameterType.Name).ToArray());
-			string deligateName = "Callback_" + 
-				(method.IsConstructor ? "Ctor" : method.Name) + paramsPostfix;
+			string deligateName = "Callback_" +
+				(method.IsConstructor ? "Ctor" : method.Name) +
+				(includeParamsToName && paramsPostfix.Length > 0 ? "_" + paramsPostfix : string.Empty);
 
 			TypeReference multicastDeligateType = parentType.Module.Import(typeof(MulticastDelegate));
 			TypeReference voidType = parentType.Module.Import(typeof(void));
