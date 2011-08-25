@@ -276,16 +276,6 @@ namespace Mice
 			type.NestedTypes.Add(result);
 			result.DeclaringType = type;
 
-			//create .ctor
-			var constructor = new MethodDefinition(".ctor", MethodAttributes.Public  
-				| MethodAttributes.RTSpecialName | MethodAttributes.SpecialName |MethodAttributes.HideBySig,
-				result.Module.Import(typeof(void)));
-			var ctorIl = constructor.Body.GetILProcessor();
-			ctorIl.Emit(OpCodes.Ldarg_0);
-			ctorIl.Emit(OpCodes.Call, type.Module.Import(typeof(object).GetConstructor(new Type[0])));
-			ctorIl.Emit(OpCodes.Ret);
-			result.Methods.Add(constructor);
-
 			return result;
 		}
 
