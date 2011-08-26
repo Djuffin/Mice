@@ -135,7 +135,6 @@ namespace Mice
 				result.Body.Variables.Add(new VariableDefinition(variable.Name, variable.VariableType));
 			}
 
-			Dictionary<Instruction, Instruction> old2NewInst = new Dictionary<Instruction, Instruction>();
 			var il = result.Body.GetILProcessor();
 			foreach (var inst in method.Body.Instructions)
 			{
@@ -175,7 +174,6 @@ namespace Mice
 				else
 					throw new NotSupportedException();
 
-				old2NewInst.Add(inst, newInst);
 				il.Append(newInst);
 			}
 
@@ -184,11 +182,11 @@ namespace Mice
 				result.Body.ExceptionHandlers.Add(new ExceptionHandler(exHandler.HandlerType)
 				{
 					CatchType = exHandler.CatchType,
-					FilterStart = exHandler.FilterStart == null ? null : old2NewInst[exHandler.FilterStart],
-					HandlerEnd = exHandler.HandlerEnd == null ? null : old2NewInst[exHandler.HandlerEnd],
-					HandlerStart = exHandler.HandlerStart == null ? null : old2NewInst[exHandler.HandlerStart],
-					TryEnd = exHandler.TryEnd == null ? null : old2NewInst[exHandler.TryEnd],
-					TryStart = exHandler.TryStart == null ? null : old2NewInst[exHandler.TryStart]
+					FilterStart = exHandler.FilterStart,
+					HandlerEnd = exHandler.HandlerEnd,
+					HandlerStart = exHandler.HandlerStart,
+					TryEnd = exHandler.TryEnd,
+					TryStart = exHandler.TryStart
 				});
 			}
 
