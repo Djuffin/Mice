@@ -134,43 +134,62 @@ namespace Mice
 			{
 				result.Body.Variables.Add(new VariableDefinition(variable.Name, variable.VariableType));
 			}
+
+			Dictionary<Instruction, Instruction> old2NewInst = new Dictionary<Instruction, Instruction>();
 			var il = result.Body.GetILProcessor();
 			foreach (var inst in method.Body.Instructions)
 			{
+				Instruction newInst;
 				if (inst.Operand == null)
-					il.Emit(inst.OpCode);
+					newInst = il.Create(inst.OpCode);
 				else if (inst.Operand is TypeReference)
-					il.Emit(inst.OpCode, inst.Operand as TypeReference);
+					newInst = il.Create(inst.OpCode, inst.Operand as TypeReference);
 				else if (inst.Operand is CallSite)
-					il.Emit(inst.OpCode, inst.Operand as CallSite);
+					newInst = il.Create(inst.OpCode, inst.Operand as CallSite);
 				else if (inst.Operand is MethodReference)
-					il.Emit(inst.OpCode, inst.Operand as MethodReference);
+					newInst = il.Create(inst.OpCode, inst.Operand as MethodReference);
 				else if (inst.Operand is FieldReference)
-					il.Emit(inst.OpCode, inst.Operand as FieldReference);
+					newInst = il.Create(inst.OpCode, inst.Operand as FieldReference);
 				else if (inst.Operand is string)
-					il.Emit(inst.OpCode, inst.Operand as string);
+					newInst = il.Create(inst.OpCode, inst.Operand as string);
 				else if (inst.Operand is sbyte)
-					il.Emit(inst.OpCode, (sbyte)inst.Operand);
+					newInst = il.Create(inst.OpCode, (sbyte)inst.Operand);
 				else if (inst.Operand is byte)
-					il.Emit(inst.OpCode, (byte)inst.Operand);
+					newInst = il.Create(inst.OpCode, (byte)inst.Operand);
 				else if (inst.Operand is int)
-					il.Emit(inst.OpCode, (int)inst.Operand);
+					newInst = il.Create(inst.OpCode, (int)inst.Operand);
 				else if (inst.Operand is long)
-					il.Emit(inst.OpCode, (long)inst.Operand);
+					newInst = il.Create(inst.OpCode, (long)inst.Operand);
 				else if (inst.Operand is float)
-					il.Emit(inst.OpCode, (float)inst.Operand);
+					newInst = il.Create(inst.OpCode, (float)inst.Operand);
 				else if (inst.Operand is double)
-					il.Emit(inst.OpCode, (double)inst.Operand);
+					newInst = il.Create(inst.OpCode, (double)inst.Operand);
 				else if (inst.Operand is Instruction)
-					il.Emit(inst.OpCode, (Instruction)inst.Operand);
+					newInst = il.Create(inst.OpCode, (Instruction)inst.Operand);
 				else if (inst.Operand is Instruction[])
-					il.Emit(inst.OpCode, (Instruction[])inst.Operand);
+					newInst = il.Create(inst.OpCode, (Instruction[])inst.Operand);
 				else if (inst.Operand is VariableDefinition)
-					il.Emit(inst.OpCode, (VariableDefinition)inst.Operand);
+					newInst = il.Create(inst.OpCode, (VariableDefinition)inst.Operand);
 				else if (inst.Operand is ParameterDefinition)
-					il.Emit(inst.OpCode, (ParameterDefinition)inst.Operand);
+					newInst = il.Create(inst.OpCode, (ParameterDefinition)inst.Operand);
 				else
 					throw new NotSupportedException();
+
+				old2NewInst.Add(inst, newInst);
+				il.Append(newInst);
+			}
+
+			foreach (var exHandler in method.Body.ExceptionHandlers)
+			{
+				result.Body.ExceptionHandlers.Add(new ExceptionHandler(exHandler.HandlerType)
+				{
+					CatchType = exHandler.CatchType,
+					FilterStart = exHandler.FilterStart == null ? null : old2NewInst[exHandler.FilterStart],
+					HandlerEnd = exHandler.HandlerEnd == null ? null : old2NewInst[exHandler.HandlerEnd],
+					HandlerStart = exHandler.HandlerStart == null ? null : old2NewInst[exHandler.HandlerStart],
+					TryEnd = exHandler.TryEnd == null ? null : old2NewInst[exHandler.TryEnd],
+					TryStart = exHandler.TryStart == null ? null : old2NewInst[exHandler.TryStart]
+				});
 			}
 
 			method.DeclaringType.Methods.Add(result);
@@ -196,6 +215,7 @@ namespace Mice
 			//repalce old method body
 			method.Body.Instructions.Clear();
 			method.Body.Variables.Clear();
+			method.Body.ExceptionHandlers.Clear();
 			
 			il = method.Body.GetILProcessor();
 			int allParamsCount = method.Parameters.Count + (method.IsStatic ? 0 : 1); //all params and maybe this

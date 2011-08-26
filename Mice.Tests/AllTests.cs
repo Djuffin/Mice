@@ -149,6 +149,33 @@ namespace Mice.Tests
 			Assert.That(Calc.Add(1.0, 2.0), Is.EqualTo(4.0));
 		}
 
+		[Test]
+		public void ExceptionsTest()
+		{
+			Assert.That(Exceptions.CatchException(), Is.True);
+			Exceptions.StaticPrototype.CatchException = () => false;
+			Assert.That(Exceptions.CatchException(), Is.False);
+
+			Exceptions.StaticPrototype = new Exceptions.PrototypeClass();
+			Assert.That(Exceptions.CatchException(), Is.True);
+			Exceptions.StaticPrototype.ThrowException = delegate { };
+			Assert.That(Exceptions.CatchException(), Is.False);
+
+
+			Exceptions.StaticPrototype.ThrowException = delegate
+			{
+			    throw new ArgumentException();
+			};
+			try
+			{
+				Exceptions.CatchException();
+				Assert.Fail();
+			}
+			catch (ArgumentException)
+			{
+			}
+		}
+
 
 	}
 }
