@@ -96,14 +96,44 @@ namespace Mice
 					AddInstancePrototypeCall(method, delegateField, prototypeField);
 				}
 			}
+
+			//process private default constructors, it makes it possible to create instance of types without public ctors
+			if (!type.IsAbstract)
+			{
+				var privateDefaultCtor =
+					type.Methods.SingleOrDefault(m => m.IsConstructor && m.Parameters.Count == 0 && !m.IsPublic && !m.IsStatic);
+				if (privateDefaultCtor != null)
+				{
+					var delegateType = CreateDeligateType(privateDefaultCtor, prototypeType, false);
+					var delegateField = CreateDeligateField(prototypeType, privateDefaultCtor, delegateType, false);
+
+					MethodDefinition newMethod = MoveCodeToImplMethod(privateDefaultCtor);
+					AddStaticPrototypeCall(privateDefaultCtor, delegateField, staticPrototypeField);
+
+					CreateCallToPrivateCtor(privateDefaultCtor, prototypeType);
+				}
+			}
 		}
 
 		private static bool IsMethodToBeProcessed(MethodDefinition m)
 		{
-			return m.IsPublic && 
+			return (m.IsPublic) && 
 				m.GenericParameters.Count == 0 &&
 				!m.IsAbstract && 
 				!(m.IsStatic && m.IsConstructor);
+		}
+
+
+		private static MethodDefinition CreateCallToPrivateCtor(MethodDefinition defCtor, TypeDefinition prototypeType)
+		{
+			MethodDefinition result = new MethodDefinition("CallCtor", MethodAttributes.Public, defCtor.DeclaringType);
+			var il = result.Body.GetILProcessor();
+			il.Emit(OpCodes.Newobj, defCtor);
+			il.Emit(OpCodes.Ret);
+
+			prototypeType.Methods.Add(result);
+
+			return result;
 		}
 
 		private static MethodDefinition MoveCodeToImplMethod(MethodDefinition method)

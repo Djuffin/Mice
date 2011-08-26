@@ -31,8 +31,7 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Cheese, Version=1.0.0.0, Culture=neutral, PublicKeyToken=c9d44c6d0b24bab1, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
+    <Reference Include="Cheese">
       <HintPath>..\Cheese\bin\Debug\Cheese.dll</HintPath>
     </Reference>
     <Reference Include="nunit.framework">

@@ -176,6 +176,15 @@ namespace Mice.Tests
 			}
 		}
 
+		[Test]
+		public void PrivateCtorTest()
+		{
+			Civilian.StaticPrototype.Ctor = self => self.xName = "ABC";
+			var civilian = Civilian.StaticPrototype.CallCtor();
+
+			Assert.That(civilian.Name, Is.EqualTo("ABC"));
+		}
+
 
 	}
 }
