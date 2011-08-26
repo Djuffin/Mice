@@ -183,6 +183,11 @@ namespace Mice.Tests
 			var civilian = Civilian.StaticPrototype.CallCtor();
 
 			Assert.That(civilian.Name, Is.EqualTo("ABC"));
+
+			Assert.That(new Doctor("Brain").Specialization, Is.EqualTo("Brain"));
+
+			Doctor doctor = Doctor.StaticPrototype.CallCtor();
+			Assert.That(doctor.Specialization, Is.Null);
 		}
 
 

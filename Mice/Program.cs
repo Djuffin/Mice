@@ -97,11 +97,13 @@ namespace Mice
 				}
 			}
 
-			//process private default constructors, it makes it possible to create instance of types without public ctors
+			//After using of Mice there always should be a wasy to create an instance of public class
+			//Here we create methods that can call parameterless ctor, evern if there is no parameterless ctor :)
 			if (!type.IsAbstract)
 			{
 				var privateDefaultCtor =
 					type.Methods.SingleOrDefault(m => m.IsConstructor && m.Parameters.Count == 0 && !m.IsPublic && !m.IsStatic);
+
 				if (privateDefaultCtor != null)
 				{
 					var delegateType = CreateDeligateType(privateDefaultCtor, prototypeType, false);
@@ -112,7 +114,30 @@ namespace Mice
 
 					CreateCallToPrivateCtor(privateDefaultCtor, prototypeType);
 				}
+				else
+				{
+					var publicDefaultCtor =
+						type.Methods.SingleOrDefault(m => m.IsConstructor && m.Parameters.Count == 0 && m.IsPublic && !m.IsStatic);					
+					if (publicDefaultCtor == null) //there is not default ctor, neither private nor public
+					{
+						privateDefaultCtor = CreateDefaultCtor(type);
+						CreateCallToPrivateCtor(privateDefaultCtor, prototypeType);
+					}
+				}
 			}
+		}
+
+		private static MethodDefinition CreateDefaultCtor(TypeDefinition type)
+		{
+			//create constructor
+			var constructor = new MethodDefinition(".ctor",
+				MethodAttributes.Private | MethodAttributes.CompilerControlled |
+				MethodAttributes.RTSpecialName | MethodAttributes.SpecialName |
+				MethodAttributes.HideBySig, type.Module.Import(typeof(void)));
+			type.Methods.Add(constructor);
+			constructor.Body.GetILProcessor().Emit(OpCodes.Ret);
+
+			return constructor;
 		}
 
 		private static bool IsMethodToBeProcessed(MethodDefinition m)
