@@ -190,6 +190,25 @@ namespace Mice.Tests
 			Assert.That(doctor.Specialization, Is.Null);
 		}
 
+		[Test]
+		public void ArraysTest()
+		{
+			Doctor d = new Doctor("std");
+			d.DoctorPrototype.AddPatients_Person = (self, p) => { };
+			d.AddPatients(d);
+			Assert.That(d.Patients, Is.Empty);
+
+			bool wasCalled = false;
+			d.DoctorPrototype.AddPatients_PersonArray = (self, ps) =>
+			{
+				self.xAddPatients(ps);
+				wasCalled = true;
+			};
+			d.AddPatients(new[] {d});
+			Assert.That(wasCalled);
+		}
+
+
 
 	}
 }

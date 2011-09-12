@@ -5,3 +5,4 @@
 4. call to real method from callback. DONE
 5. sign assembly with .snk file. DONE
 6. Proper tests. DONE
+7. support for array as method arguments

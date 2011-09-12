@@ -355,9 +355,7 @@ namespace Mice
 
 		private static FieldDefinition CreateDeligateField(TypeDefinition hostType, MethodDefinition method, TypeDefinition delegateType, bool includeParamsToName)
 		{
-			string paramsPostfix = string.Join("_", method.Parameters.Select(p => p.ParameterType.Name).ToArray());
-			string fieldName = (method.IsConstructor ? "Ctor" : method.Name) + 
-				(includeParamsToName && paramsPostfix.Length > 0 ? "_" + paramsPostfix : string.Empty); ;
+			var fieldName = ComposeFullMethodName(method, includeParamsToName);
 
 			FieldDefinition field = new FieldDefinition(fieldName, FieldAttributes.Public, delegateType);
 			hostType.Fields.Add(field);
@@ -366,10 +364,7 @@ namespace Mice
 
 		private static TypeDefinition CreateDeligateType(MethodDefinition method, TypeDefinition parentType, bool includeParamsToName)
 		{
-			string paramsPostfix = string.Join("_", method.Parameters.Select(p => p.ParameterType.Name).ToArray());
-			string deligateName = "Callback_" +
-				(method.IsConstructor ? "Ctor" : method.Name) +
-				(includeParamsToName && paramsPostfix.Length > 0 ? "_" + paramsPostfix : string.Empty);
+			string deligateName = "Callback_" + ComposeFullMethodName(method, includeParamsToName);
 
 			TypeReference multicastDeligateType = parentType.Module.Import(typeof(MulticastDelegate));
 			TypeReference voidType = parentType.Module.Import(typeof(void));
@@ -408,6 +403,28 @@ namespace Mice
 			result.DeclaringType = parentType;
 			parentType.NestedTypes.Add(result);
 			return result;
+		}
+
+
+		private static string ComposeFullMethodName(MethodDefinition method, bool includeParamsToName)
+		{
+			var @params = method.Parameters.Select(p =>
+			{
+				if (p.ParameterType.IsArray)
+				{
+					ArrayType array = (ArrayType)p.ParameterType;
+					if (array.Dimensions.Count > 1)
+						return array.ElementType.Name + "Array" + array.Dimensions.Count.ToString();
+					else
+						return array.ElementType.Name + "Array";
+				}
+				else
+					return p.ParameterType.Name;
+			});
+			IEnumerable<string> partsOfName = new[] {method.IsConstructor ? "Ctor" : method.Name};
+			if (includeParamsToName)
+				partsOfName = partsOfName.Concat(@params);
+			return string.Join("_", partsOfName.ToArray());
 		}
 	}
 }
