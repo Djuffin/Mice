@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text;
 using Mono.Cecil;
@@ -52,7 +53,7 @@ namespace Mice
 		{
 			return type.IsPublic && 
 				!type.IsEnum &&
-				type.GenericParameters.Count == 0 &&
+				//type.GenericParameters.Count == 0 &&
 				!type.IsValueType && 
 				!type.IsInterface &&
 				type.BaseType.Name != "MulticastDelegate";
@@ -68,7 +69,7 @@ namespace Mice
 		{
 			TypeDefinition prototypeType = CreatePrototypeType(type);
 
-			FieldDefinition prototypeField = new FieldDefinition(type.Name + "Prototype", FieldAttributes.Public, prototypeType);
+			FieldDefinition prototypeField = new FieldDefinition(/*type.Name +*/ "Prototype", FieldAttributes.Public, prototypeType);
 			type.Fields.Add(prototypeField);
 
 			FieldDefinition staticPrototypeField = new FieldDefinition("StaticPrototype", FieldAttributes.Public | FieldAttributes.Static, prototypeType);
@@ -89,11 +90,11 @@ namespace Mice
 
 				MethodDefinition newMethod = MoveCodeToImplMethod(method);
 
-				AddStaticPrototypeCall(method, delegateField, staticPrototypeField);
+				//AddStaticPrototypeCall(method, delegateField, staticPrototypeField);
 
 				if (!method.IsStatic)
 				{
-					AddInstancePrototypeCall(method, delegateField, prototypeField);
+					//AddInstancePrototypeCall(method, delegateField, prototypeField);
 				}
 			}
 
@@ -143,7 +144,7 @@ namespace Mice
 		private static bool IsMethodToBeProcessed(MethodDefinition m)
 		{
 			return (m.IsPublic) && 
-				m.GenericParameters.Count == 0 &&
+				//m.GenericParameters.Count == 0 &&
 				!m.IsAbstract && 
 				!(m.IsStatic && m.IsConstructor);
 		}
@@ -176,19 +177,17 @@ namespace Mice
 
 			MethodDefinition result = new MethodDefinition(name, method.Attributes, method.ReturnType);
 			result.SemanticsAttributes = method.SemanticsAttributes;
+			result.CallingConvention = method.CallingConvention;
+			result.ExplicitThis = method.ExplicitThis;
+			result.HasThis = method.HasThis;
 			result.IsRuntimeSpecialName = false;
 			result.IsVirtual = false;
 			if (method.IsConstructor)
 				result.IsSpecialName = false;
 
-			foreach (var param in method.Parameters)
-			{
-				result.Parameters.Add(new ParameterDefinition(param.Name, param.Attributes, param.ParameterType));
-			}
-			foreach (var variable in method.Body.Variables)
-			{
-				result.Body.Variables.Add(new VariableDefinition(variable.Name, variable.VariableType));
-			}
+			result.Parameters.AddRange(method.Parameters.Select(Copy));
+			result.Body.Variables.AddRange(method.Body.Variables.Select(Copy));
+			result.GenericParameters.AddRange(method.GenericParameters.Select(p => p.Copy(result)));
 
 			var il = result.Body.GetILProcessor();
 			foreach (var inst in method.Body.Instructions)
@@ -275,10 +274,16 @@ namespace Mice
 			for (int i = 0; i < allParamsCount; i++)
 			    il.Emit(OpCodes.Ldarg, i);
 
-			il.Emit(OpCodes.Call, result);
+			var methodToCall = result
+				.MakeGeneric(result.DeclaringType.GenericParameters.ToArray())
+				.MakeGenericMethod(method.GenericParameters.ToArray());
+
+			il.Emit(OpCodes.Call, methodToCall);
 			il.Emit(OpCodes.Ret);
 			return result;
 		}
+
+
 
 		private static void AddStaticPrototypeCall(MethodDefinition method, FieldDefinition delegateField, FieldDefinition prototypeField)
 		{
@@ -373,6 +378,8 @@ namespace Mice
 
 			TypeDefinition result = new TypeDefinition(null, deligateName,
 				TypeAttributes.Sealed | TypeAttributes.NestedPublic | TypeAttributes.RTSpecialName , multicastDeligateType);
+			result.GenericParameters.AddRange(method.GenericParameters.Select(p => p.Copy(result)));
+
 
 			//create constructor
 			var constructor = new MethodDefinition(".ctor",
@@ -396,8 +403,14 @@ namespace Mice
 			}
 			foreach (var param in method.Parameters)
 			{
-				invoke.Parameters.Add(new ParameterDefinition(param.Name, param.Attributes, param.ParameterType));
+				var paramToAdd = param.Copy();
+				if (paramToAdd.ParameterType.IsGenericParameter)
+				{
+					GenericParameter gpt = (GenericParameter)paramToAdd.ParameterType;
+					
+				}
 			}
+			
 			result.Methods.Add(invoke); 
 
 			result.DeclaringType = parentType;
@@ -426,5 +439,78 @@ namespace Mice
 				partsOfName = partsOfName.Concat(@params);
 			return string.Join("_", partsOfName.ToArray());
 		}
+
+		#region extensions
+
+		private static ParameterDefinition Copy(this ParameterDefinition param)
+		{
+			return new ParameterDefinition(param.Name, param.Attributes, param.ParameterType);
+		}
+
+		private static VariableDefinition Copy(this VariableDefinition variable)
+		{
+			return new VariableDefinition(variable.Name, variable.VariableType);
+		}
+
+		private static GenericParameter Copy(this GenericParameter gParam, IGenericParameterProvider owner)
+		{
+			var result = new GenericParameter(gParam.Name, owner) { Attributes = gParam.Attributes };
+			result.Constraints.AddRange(gParam.Constraints);
+			result.CustomAttributes.AddRange(gParam.CustomAttributes);
+			return result;
+		}
+
+		public static MethodReference MakeGenericMethod(this MethodReference self, params TypeReference[] arguments)
+		{
+			if (self.GenericParameters.Count == 0)
+				return self;
+
+			if (self.GenericParameters.Count != arguments.Length)
+				throw new ArgumentException();
+
+			var instance = new GenericInstanceMethod(self);
+			instance.GenericArguments.AddRange(arguments);
+
+			return instance;
+		}
+
+		public static MethodReference MakeGeneric(this MethodReference self, params TypeReference[] arguments)
+		{
+			var reference = new MethodReference(self.Name, self.ReturnType)
+			{
+				DeclaringType = self.DeclaringType.MakeGenericType(arguments),
+				HasThis = self.HasThis,
+				ExplicitThis = self.ExplicitThis,
+				CallingConvention = self.CallingConvention,
+			};
+
+			reference.Parameters.AddRange(self.Parameters.Select(p => new ParameterDefinition(p.ParameterType)));
+
+			reference.GenericParameters.AddRange(self.GenericParameters.Select(p => new GenericParameter(p.Name, reference)));
+
+			return reference;
+		}
+
+		public static TypeReference MakeGenericType(this TypeReference self, params TypeReference[] arguments)
+		{
+			if (self.GenericParameters.Count == 0)
+				return self;
+
+			if (self.GenericParameters.Count != arguments.Length)
+				throw new ArgumentException();
+
+			var instance = new GenericInstanceType(self);
+			instance.GenericArguments.AddRange(arguments);
+
+			return instance;
+		}
+
+		public static void AddRange<T1, T2>(this Mono.Collections.Generic.Collection<T1> collection, IEnumerable<T2> items)
+			where T2 : T1
+		{
+			foreach (var item in items)
+				collection.Add(item);
+		}
+		#endregion
 	}
 }
