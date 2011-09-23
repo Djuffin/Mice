@@ -85,20 +85,27 @@ namespace Mice
 			//create delegate types & fields, patch methods to call delegates
 			foreach (var method in methods)
 			{
-				bool includeParamsToName = name2Count[method.Name] > 1;
-
-				var delegateType = CreateDeligateType(method, prototypeType, includeParamsToName);
-				var delegateField = CreateDeligateField(prototypeType, method, delegateType, includeParamsToName);
-
-				delegateField.SetGenericInstanciating(delegateType);
-
-				MethodDefinition newMethod = MoveCodeToImplMethod(method);
-
-				//AddStaticPrototypeCall(method, delegateField, staticPrototypeField);
-
-				if (!method.IsStatic)
+				if (method.HasGenericParameters)
 				{
-					//AddInstancePrototypeCall(method, delegateField, prototypeField);
+					Generics.InitializeMethod(prototypeType, method);
+				}
+				else
+				{
+					bool includeParamsToName = name2Count[method.Name] > 1;
+
+					var delegateType = CreateDeligateType(method, prototypeType, includeParamsToName);
+					var delegateField = CreateDeligateField(prototypeType, method, delegateType, includeParamsToName);
+
+					delegateField.SetGenericInstanciating(delegateType);
+
+					MethodDefinition newMethod = MoveCodeToImplMethod(method);
+
+					AddStaticPrototypeCall(method, delegateField, staticPrototypeField);
+
+					if (!method.IsStatic)
+					{
+						AddInstancePrototypeCall(method, delegateField, prototypeField);
+					}
 				}
 			}
 
@@ -191,7 +198,7 @@ namespace Mice
 
 			result.Parameters.AddRange(method.Parameters.Select(Copy));
 			result.Body.Variables.AddRange(method.Body.Variables.Select(Copy));
-			result.GenericParameters.AddRange(method.GenericParameters.Select(p => p.Copy(result)));
+			//result.GenericParameters.AddRange(method.GenericParameters.Select(p => p.Copy(result)));
 
 			var il = result.Body.GetILProcessor();
 			foreach (var inst in method.Body.Instructions)
@@ -405,7 +412,7 @@ namespace Mice
 				}
 			}
 			//add generic parameters from origin method
-			result.GenericParameters.AddRange(method.GenericParameters.Select(p => p.Copy(result)));
+			//result.GenericParameters.AddRange(method.GenericParameters.Select(p => p.Copy(result)));
 
 			//create constructor
 			var constructor = new MethodDefinition(".ctor",
@@ -542,7 +549,7 @@ namespace Mice
 				collection.Add(item);
 		}
 
-		public static void SetGenericInstanciating(this FieldDefinition fieldDefinition, TypeDefinition typeDefinition)
+		public static void SetGenericInstanciating(this FieldReference fieldDefinition, TypeReference typeDefinition)
 		{
 			if (typeDefinition.HasGenericParameters)
 			{
@@ -552,7 +559,7 @@ namespace Mice
 			}
 		}
 
-		public static void SetGenericInstanciating(this ParameterDefinition parameterDefinition, TypeReference typeDefinition)
+		public static void SetGenericInstanciating(this ParameterReference parameterDefinition, TypeReference typeDefinition)
 		{
 			if (typeDefinition.HasGenericParameters)
 			{

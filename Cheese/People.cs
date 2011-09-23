@@ -33,7 +33,18 @@ namespace Cheese
 			return _data.Cast<T1>();
 		}
 
-		public void AddRange2<T1> (IEnumerable<T1> items) where T1:T
+		public static List<T1> StaticCast<T1>()
+		{
+			return new List<T1>();
+		}
+
+		public int AddRange2<T1>(IEnumerable<T1> items) where T1 : T
+		{
+			AddRange(items.Cast<T>());
+			return 1;
+		}
+
+		public void AddRange2ViodReturn<T1>(IEnumerable<T1> items) where T1 : T
 		{
 			AddRange(items.Cast<T>());
 		}

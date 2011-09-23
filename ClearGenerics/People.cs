@@ -20,13 +20,34 @@ namespace ClearGenerics
 
 		public struct PeoplePrototype
 		{
-			public Add_CallBack Add;
 
+			public Add_CallBack Add;
 			public delegate void Add_CallBack(T person);
+
+			public Dictionary<Type, object> setAddRangeActions;
+
+			public void SetAddRange2<T1, T2>(Func<T1, T2> action)
+			{
+				if (setAddRangeActions == null)
+				{
+					setAddRangeActions = new Dictionary<Type, object>();
+				}
+				setAddRangeActions[typeof(Func<T1, T2>)] = action;
+			}
+
+			public Func<T1, T2> GetAddRange2<T1, T2>()
+			{
+				if (setAddRangeActions.ContainsKey(typeof(Func<T1, T2>)))
+				{
+					return (Func<T1, T2>)setAddRangeActions[typeof(Func<T1, T2>)];
+				}
+				return null;
+			}
 		}
 
 		public People()
 		{
+
 		}
 
 		public People(T[] items)
