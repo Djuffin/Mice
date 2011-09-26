@@ -13,6 +13,7 @@ namespace Mice
 {
 	static class Program
 	{
+		const string realImplementationPrefix = "x";
 
 		static int Main(string[] args)
 		{
@@ -85,9 +86,15 @@ namespace Mice
 			//create delegate types & fields, patch methods to call delegates
 			foreach (var method in methods)
 			{
+				if (method.IsConstructor)
+				{
+					continue;
+				}
 				if (method.HasGenericParameters)
 				{
 					Generics.InitializeMethod(prototypeType, method);
+					MethodDefinition newMethod = MoveCodeToImplMethod(method);
+					Generics.AddStaticProrotypeCall(method, staticPrototypeField);
 				}
 				else
 				{
@@ -109,34 +116,34 @@ namespace Mice
 				}
 			}
 
-			//After using of Mice there always should be a wasy to create an instance of public class
-			//Here we create methods that can call parameterless ctor, evern if there is no parameterless ctor :)
-			if (!type.IsAbstract)
-			{
-				var privateDefaultCtor =
-					type.Methods.SingleOrDefault(m => m.IsConstructor && m.Parameters.Count == 0 && !m.IsPublic && !m.IsStatic);
+			////After using of Mice there always should be a wasy to create an instance of public class
+			////Here we create methods that can call parameterless ctor, evern if there is no parameterless ctor :)
+			//if (!type.IsAbstract)
+			//{
+			//    var privateDefaultCtor =
+			//        type.Methods.SingleOrDefault(m => m.IsConstructor && m.Parameters.Count == 0 && !m.IsPublic && !m.IsStatic);
 
-				if (privateDefaultCtor != null)
-				{
-					var delegateType = CreateDeligateType(privateDefaultCtor, prototypeType, false);
-					var delegateField = CreateDeligateField(prototypeType, privateDefaultCtor, delegateType, false);
+			//    if (privateDefaultCtor != null)
+			//    {
+			//        var delegateType = CreateDeligateType(privateDefaultCtor, prototypeType, false);
+			//        var delegateField = CreateDeligateField(prototypeType, privateDefaultCtor, delegateType, false);
 
-					MethodDefinition newMethod = MoveCodeToImplMethod(privateDefaultCtor);
-					AddStaticPrototypeCall(privateDefaultCtor, delegateField, staticPrototypeField);
+			//        MethodDefinition newMethod = MoveCodeToImplMethod(privateDefaultCtor);
+			//        AddStaticPrototypeCall(privateDefaultCtor, delegateField, staticPrototypeField);
 
-					CreateCallToPrivateCtor(privateDefaultCtor, prototypeType);
-				}
-				else
-				{
-					var publicDefaultCtor =
-						type.Methods.SingleOrDefault(m => m.IsConstructor && m.Parameters.Count == 0 && m.IsPublic && !m.IsStatic);					
-					if (publicDefaultCtor == null) //there is not default ctor, neither private nor public
-					{
-						privateDefaultCtor = CreateDefaultCtor(type);
-						CreateCallToPrivateCtor(privateDefaultCtor, prototypeType);
-					}
-				}
-			}
+			//        CreateCallToPrivateCtor(privateDefaultCtor, prototypeType);
+			//    }
+			//    else
+			//    {
+			//        var publicDefaultCtor =
+			//            type.Methods.SingleOrDefault(m => m.IsConstructor && m.Parameters.Count == 0 && m.IsPublic && !m.IsStatic);					
+			//        if (publicDefaultCtor == null) //there is not default ctor, neither private nor public
+			//        {
+			//            privateDefaultCtor = CreateDefaultCtor(type);
+			//            CreateCallToPrivateCtor(privateDefaultCtor, prototypeType);
+			//        }
+			//    }
+			//}
 		}
 
 		private static MethodDefinition CreateDefaultCtor(TypeDefinition type)
@@ -175,7 +182,6 @@ namespace Mice
 
 		private static MethodDefinition MoveCodeToImplMethod(MethodDefinition method)
 		{
-			const string realImplementationPrefix = "x";
 			string name; 
 			if (method.IsConstructor)
 				name = realImplementationPrefix + "Ctor";
@@ -198,7 +204,7 @@ namespace Mice
 
 			result.Parameters.AddRange(method.Parameters.Select(Copy));
 			result.Body.Variables.AddRange(method.Body.Variables.Select(Copy));
-			//result.GenericParameters.AddRange(method.GenericParameters.Select(p => p.Copy(result)));
+			result.GenericParameters.AddRange(method.GenericParameters.Select(p => p.Copy(result)));
 
 			var il = result.Body.GetILProcessor();
 			foreach (var inst in method.Body.Instructions)
@@ -479,6 +485,14 @@ namespace Mice
 
 		#region extensions
 
+		private static GenericParameter Copy(this GenericParameter gParam, IGenericParameterProvider owner)
+		{
+			var result = new GenericParameter(gParam.Name, owner) { Attributes = gParam.Attributes };
+			result.Constraints.AddRange(gParam.Constraints);
+			result.CustomAttributes.AddRange(gParam.CustomAttributes);
+			return result;
+		}
+
 		private static ParameterDefinition Copy(this ParameterDefinition param)
 		{
 			return new ParameterDefinition(param.Name, param.Attributes, param.ParameterType);
@@ -487,14 +501,6 @@ namespace Mice
 		private static VariableDefinition Copy(this VariableDefinition variable)
 		{
 			return new VariableDefinition(variable.Name, variable.VariableType);
-		}
-
-		private static GenericParameter Copy(this GenericParameter gParam, IGenericParameterProvider owner)
-		{
-			var result = new GenericParameter(gParam.Name, owner) { Attributes = gParam.Attributes };
-			result.Constraints.AddRange(gParam.Constraints);
-			result.CustomAttributes.AddRange(gParam.CustomAttributes);
-			return result;
 		}
 
 		public static MethodReference MakeGenericMethod(this MethodReference self, params TypeReference[] arguments)
@@ -522,7 +528,6 @@ namespace Mice
 			};
 
 			reference.Parameters.AddRange(self.Parameters.Select(p => new ParameterDefinition(p.ParameterType)));
-
 			reference.GenericParameters.AddRange(self.GenericParameters.Select(p => new GenericParameter(p.Name, reference)));
 
 			return reference;

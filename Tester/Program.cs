@@ -71,25 +71,44 @@ namespace Tester
 					List<Person> entities = entity.Get<List<Person>>(EntitiesKey);
 					entities.AddRange(items);
 				},
-				Ctor = (self) =>
-				{
-					var entity = GetCache(self);
-					entity.Set(EntitiesKey, new List<Person>());
-				},
-				Ctor_TArray = (self, itemsArray) =>
-				{
-					var entity = GetCache(self);
-					List<Person> entities = new List<Person>();
-					entities.AddRange(itemsArray);
-					entity.Set(EntitiesKey, entities);
-				},
+				//Ctor = (self) =>
+				//{
+				//    var entity = GetCache(self);
+				//    entity.Set(EntitiesKey, new List<Person>());
+				//},
+				//Ctor_TArray = (self, itemsArray) =>
+				//{
+				//    var entity = GetCache(self);
+				//    List<Person> entities = new List<Person>();
+				//    entities.AddRange(itemsArray);
+				//    entity.Set(EntitiesKey, entities);
+				//},
 			};
-			People<Person>.StaticPrototype.set_AddRange2<Person>((People<Person> self, Person obj) => { return 1; });
+			People<Person>.StaticPrototype.set_AddRange2<Person>((People<Person> self, IEnumerable<Person> obj) => 
+			{ 
+				return 1; 
+			});
 
-			People<Person>.StaticPrototype.set_Cast<int>((People<Person> self, int val) => { return new List<int>(); });
-			People<Person>.StaticPrototype.set_Cast<Person>((People<Person> self, Person val) => { return new List<Person>(); });
-			People<Person>.StaticPrototype.set_StaticCast<object>((object obj) => { return new List<object>(); });
-			People<Person>.StaticPrototype.set_AddRange2ViodReturn<Person>((People<Person> self, Person obj) => {  });
+			People<Person>.StaticPrototype.set_Cast<int>((People<Person> self) => { 
+				return new List<int>();
+			});
+			People<Person>.StaticPrototype.set_Cast<Person>((People<Person> self) => { 
+				return new List<Person>(); 
+			});
+			People<Person>.StaticPrototype.set_StaticCast<object>(() => { 
+				return new List<object>(); 
+			});
+			People<Person>.StaticPrototype.set_AddRange2ViodReturn<Person>((People<Person> self, IEnumerable<Person> obj) => {
+				var s = "";
+			});
+
+			People<Person> testInstance = new People<Person>();
+			IEnumerable<int> personList = testInstance.Cast<int>();
+			testInstance.AddRange2<Person>(new List<Person>());
+			People<Person>.StaticCast<Person>();
+			testInstance.AddRange(new List<Person>());
+			testInstance.Add(new Person());
+			testInstance.AddRange2ViodReturn<Person>(new List<Person>());
 		}
 
 		public static void AddObjects(object obj)

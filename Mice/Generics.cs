@@ -13,9 +13,7 @@ namespace Mice
 	{
 		public const string SetActionPrefix = "set_";
 
-		public const string GetActionPrefix = "get_";
-
-		public const string ActionsPrefix = "Actions";
+		public const string ActionsPostfix = "Actions";
 
 		public const string ActionParameterName = "action";
 
@@ -31,16 +29,21 @@ namespace Mice
 		{
 			if (method.HasGenericParameters)
 			{
-				var field = new FieldDefinition(method.Name + ActionsPrefix, FieldAttributes.Public, method.Module.Import(typeof(Dictionary<Type, object>)));
+				var field = new FieldDefinition(method.Name + ActionsPostfix, FieldAttributes.Public, method.Module.Import(typeof(Dictionary<Type, object>)));
 				declaringType.Fields.Add(field);
 				GenericInstanceType declaringTypeForField = new GenericInstanceType(declaringType);
-				declaringTypeForField.GenericArguments.AddRange(declaringType.GenericParameters);
-				var instanceField = new FieldReference(field.Name, field.FieldType);
-				instanceField.DeclaringType = declaringTypeForField;
-				//declaringType.Fields[declaringType.Fields.IndexOf(field)] = instanceField.Resolve();
-				return instanceField;
+				return GetGenericInstanceField(field);
 			}
 			return null;
+		}
+
+		public static FieldReference GetGenericInstanceField(FieldDefinition field)
+		{
+			GenericInstanceType declaringTypeForField = new GenericInstanceType(field.DeclaringType);
+			declaringTypeForField.GenericArguments.AddRange(field.DeclaringType.GenericParameters);
+			var instanceField = new FieldReference(field.Name, field.FieldType);
+			instanceField.DeclaringType = declaringTypeForField;
+			return instanceField;
 		}
 
 		/// <summary>
@@ -57,7 +60,9 @@ namespace Mice
 
 			actionSetter.GenericParameters.AddRange(copyGenericParameters);
 
-			var actionParameter = CreateActionSetterParameter(destinationType, method, actionSetter);
+			var actionParameterType = CreateActionSetterParameterType(method, actionSetter);
+			ParameterDefinition actionParameter = new ParameterDefinition(actionParameterType);
+			actionParameter.Name = ActionParameterName;
 
 			actionSetter.Parameters.Add(actionParameter);
 
@@ -66,18 +71,18 @@ namespace Mice
 			destinationType.Methods.Add(actionSetter);
 		}
 
-		public static ParameterDefinition CreateActionSetterParameter(TypeDefinition destinationType, MethodDefinition method, MethodDefinition resultMethod)
+		public static GenericInstanceType CreateActionSetterParameterType(MethodDefinition originalMethod, MethodDefinition containingParameterMethod)
 		{
 			string typeName;
-			int paramsCount = method.GenericParameters.Count;
+			int paramsCount = originalMethod.Parameters.Count;
 
 			//self parameter
-			if (!method.IsStatic)
+			if (!originalMethod.IsStatic)
 			{
 				paramsCount++;
 			}
 
-			if (method.ReturnType.Name != "Void")
+			if (originalMethod.ReturnType.Name != "Void")
 			{
 				paramsCount += 1;//1 for return type
 				typeName = "System.Func`" + (paramsCount);
@@ -86,35 +91,54 @@ namespace Mice
 			{
 				typeName = "System.Action`" + (paramsCount);
 			}
+			System.Reflection.Assembly winAssembly;
 
-			var winAssembly = System.Reflection.Assembly.Load("System.Core, Version=3.5.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089");
-			System.Reflection.Assembly.GetExecutingAssembly().GetReferencedAssemblies();
+			if (typeName == "System.Action`1")
+			{
+				winAssembly = System.Reflection.Assembly.Load("mscorlib, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089");
+			}
+			else 
+			{
+				winAssembly = System.Reflection.Assembly.Load("System.Core, Version=3.5.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089");
+			}
 			var origType = winAssembly.GetType(typeName);
 			var assembly = AssemblyDefinition.ReadAssembly(winAssembly.Location);
 			var module = assembly.Modules[0];
-			var actionTypeReference = method.Module.Import(origType);
-			actionTypeReference.GenericParameters.AddRange(resultMethod.GenericParameters);
+			var actionTypeReference = originalMethod.Module.Import(origType);
+			actionTypeReference.GenericParameters.AddRange(containingParameterMethod.GenericParameters);
 
 			var genericInstanceType = new GenericInstanceType(actionTypeReference);
 
-			if (!method.IsStatic)
+			//add self parameter
+			if (!originalMethod.IsStatic)
 			{
-				var baseTypeInstance = new GenericInstanceType(resultMethod.DeclaringType.DeclaringType);
-				baseTypeInstance.GenericArguments.AddRange(resultMethod.DeclaringType.GenericParameters);
-				genericInstanceType.GenericArguments.Add(baseTypeInstance);
+				if (containingParameterMethod.DeclaringType.DeclaringType != null)
+				{
+					var baseTypeInstance = new GenericInstanceType(containingParameterMethod.DeclaringType.DeclaringType);
+					baseTypeInstance.GenericArguments.AddRange(containingParameterMethod.DeclaringType.GenericParameters);
+					genericInstanceType.GenericArguments.Add(baseTypeInstance);
+				}
+				else
+				{
+					var baseTypeInstance = new GenericInstanceType(containingParameterMethod.DeclaringType);
+					baseTypeInstance.GenericArguments.AddRange(containingParameterMethod.DeclaringType.GenericParameters);
+					genericInstanceType.GenericArguments.Add(baseTypeInstance);
+				}
 			}
-			genericInstanceType.GenericArguments.AddRange(resultMethod.GenericParameters);
 
-			if (method.ReturnType.Name != "Void")
+			//add function parameters
+			foreach (ParameterDefinition parameter in originalMethod.Parameters)
 			{
-				genericInstanceType.GenericArguments.Add(method.ReturnType);
+				genericInstanceType.GenericArguments.Add(parameter.ParameterType);
 			}
 
-			//add parameter to method
-			ParameterDefinition actionParameter = new ParameterDefinition(genericInstanceType);
-			actionParameter.Name = ActionParameterName;
+			//add return type parameter if presented
+			if (originalMethod.ReturnType.Name != "Void")
+			{
+				genericInstanceType.GenericArguments.Add(originalMethod.ReturnType);
+			}
 
-			return actionParameter;
+			return genericInstanceType;
 		}
 
 		public static void WriteSetterILBody(MethodDefinition method, FieldReference actionsField)
@@ -194,12 +218,105 @@ namespace Mice
 			return result;
 		}
 
-		public static void SetSelfParameter(this MethodReference targetMethod, MethodReference sourceMethod)
+		public static void AddStaticProrotypeCall(MethodDefinition method, FieldDefinition prototypeField)
 		{
-			var selfParameter = new ParameterDefinition("self", ParameterAttributes.None, sourceMethod.DeclaringType);
-			//instanciate generic type
-			selfParameter.SetGenericInstanciating(sourceMethod.DeclaringType);
-			targetMethod.Parameters.Add(selfParameter);
+			GenericInstanceType actionType = CreateActionSetterParameterType(method, method);
+
+			//initialize local variables
+			var ilProcessor = method.Body.GetILProcessor();
+			var firstInstruction = ilProcessor.Body.Instructions.First();
+			
+			ilProcessor.Body.InitLocals = true;
+			VariableDefinition loc0 = new VariableDefinition(actionType);
+			ilProcessor.Body.Variables.Add(loc0);
+			VariableDefinition loc1 = new VariableDefinition(method.Module.Import(typeof(bool)));
+			ilProcessor.Body.Variables.Add(loc1);
+
+			var actionsFieldName = method.Name + ActionsPostfix;
+			var actionsField = prototypeField.FieldType.Resolve().Fields.First(f => f.Name == actionsFieldName);
+			var genericInstancePrototypeField = GetGenericInstanceField(prototypeField);
+			var genericInstanceActionsField = GetGenericInstanceField(actionsField);
+
+			Type typeType = typeof(Type);
+			System.Reflection.MethodInfo getTypeMethodInfo = typeType.GetMethod("GetTypeFromHandle");
+			MethodReference getTypeMethod = method.Module.Import(getTypeMethodInfo);
+
+			System.Reflection.MethodInfo get_ItemMethodInfo = ActionsType.GetMethod("get_Item");
+			MethodReference get_ItemMethod = method.Module.Import(get_ItemMethodInfo);
+
+			System.Reflection.MethodInfo ContainsKeyMethodInfo = ActionsType.GetMethod("ContainsKey");
+			MethodReference ContainsKeyMethod = method.Module.Import(ContainsKeyMethodInfo);
+
+			MethodReference invokeAction = actionType.Resolve().Methods.First(m => m.Name == "Invoke");
+			invokeAction = method.Module.Import(invokeAction);
+			//((MethodReference)invokeAction).DeclaringType = actionType;
+			var genericInvokeAction = new GenericInstanceType(invokeAction.DeclaringType);
+			genericInvokeAction.GenericArguments.AddRange(actionType.GenericArguments);
+			invokeAction.DeclaringType = genericInvokeAction;
+
+			var paramCount = method.Parameters.Count;
+			
+			if(!method.IsStatic)
+			{
+				paramCount++;
+			}
+
+			var instructions = new[]
+			{
+				ilProcessor.Create(OpCodes.Nop),
+				ilProcessor.Create(OpCodes.Ldsflda, genericInstancePrototypeField),
+				ilProcessor.Create(OpCodes.Ldfld, genericInstanceActionsField),
+				ilProcessor.Create(OpCodes.Ldnull),
+				ilProcessor.Create(OpCodes.Ceq),
+				ilProcessor.Create(OpCodes.Stloc_1),
+				ilProcessor.Create(OpCodes.Ldloc_1),
+				ilProcessor.Create(OpCodes.Brtrue_S, firstInstruction),
+
+				ilProcessor.Create(OpCodes.Nop),
+				ilProcessor.Create(OpCodes.Ldsflda, genericInstancePrototypeField),
+				ilProcessor.Create(OpCodes.Ldfld, genericInstanceActionsField),
+				ilProcessor.Create(OpCodes.Ldtoken, actionType),
+				ilProcessor.Create(OpCodes.Call, getTypeMethod),
+				ilProcessor.Create(OpCodes.Callvirt, ContainsKeyMethod),
+				ilProcessor.Create(OpCodes.Ldc_I4_0),
+				ilProcessor.Create(OpCodes.Ceq),
+				ilProcessor.Create(OpCodes.Stloc_1),
+				ilProcessor.Create(OpCodes.Ldloc_1),
+				ilProcessor.Create(OpCodes.Brtrue_S, firstInstruction),
+
+				ilProcessor.Create(OpCodes.Nop),
+				ilProcessor.Create(OpCodes.Ldsflda, genericInstancePrototypeField),
+				ilProcessor.Create(OpCodes.Ldfld, genericInstanceActionsField),
+				ilProcessor.Create(OpCodes.Ldtoken, actionType),
+				ilProcessor.Create(OpCodes.Call, getTypeMethod),
+
+				ilProcessor.Create(OpCodes.Callvirt, get_ItemMethod),
+				ilProcessor.Create(OpCodes.Isinst, actionType),
+				ilProcessor.Create(OpCodes.Stloc_0),
+				ilProcessor.Create(OpCodes.Ldloc_0),
+				ilProcessor.Create(OpCodes.Ldnull),
+				ilProcessor.Create(OpCodes.Ceq),
+				ilProcessor.Create(OpCodes.Stloc_1),
+				ilProcessor.Create(OpCodes.Ldloc_1),
+				ilProcessor.Create(OpCodes.Brtrue_S, firstInstruction),
+
+				ilProcessor.Create(OpCodes.Nop),
+				ilProcessor.Create(OpCodes.Ldloc_0),
+			}.Concat(
+				Enumerable.Range(0, paramCount).Select(i => ilProcessor.Create(OpCodes.Ldarg, i))
+			)
+			.Concat(new []
+			{
+				ilProcessor.Create(OpCodes.Callvirt, invokeAction),
+				ilProcessor.Create(OpCodes.Nop),
+				ilProcessor.Create(OpCodes.Ret),
+			}
+			);
+
+			foreach (var instruction in instructions)
+			{
+				ilProcessor.InsertBefore(firstInstruction, instruction);
+			}
 		}
 	}
 }
