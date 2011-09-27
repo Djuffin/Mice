@@ -489,7 +489,7 @@ namespace Mice
 						return array.ElementType.Name + "Array";
 				}
 				else
-					return p.ParameterType.Name;
+					return p.ParameterType.Name.Replace("`", "_");
 			});
 			IEnumerable<string> partsOfName = new[] {method.IsConstructor ? "Ctor" : method.Name};
 			if (includeParamsToName)
