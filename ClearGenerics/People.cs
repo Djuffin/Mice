@@ -11,6 +11,8 @@ namespace ClearGenerics
 
 		public static PeoplePrototype StaticPrototype;
 
+		public PeoplePrototype Prototype;
+
 		public PeoplePrototype TestMethod()
 		{
 			return new PeoplePrototype();
@@ -96,6 +98,20 @@ namespace ClearGenerics
 
 		public void AddRange2<T1>(IEnumerable<T1> items) where T1 : T
 		{
+			if (Prototype.setAddRangeActions != null)
+			{
+				if (Prototype.setAddRangeActions.ContainsKey(typeof(Action<People<T>, IEnumerable<T>>)))
+				{
+					Action<People<T>, IEnumerable<T>> method = Prototype.setAddRangeActions[typeof(Action<People<T>, IEnumerable<T>>)] as Action<People<T>, IEnumerable<T>>;
+
+					if (method != null)
+					{
+						method(this, items);
+						return;
+					}
+				}
+			}
+
 			if (StaticPrototype.setAddRangeActions != null)
 			{
 				if (StaticPrototype.setAddRangeActions.ContainsKey(typeof(Action<People<T>, IEnumerable<T>>)))

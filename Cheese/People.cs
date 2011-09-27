@@ -9,9 +9,9 @@ namespace Cheese
 	{
 		private List<T> _data = new List<T>();
 
-		public People()
-		{
-		}
+		//public People()
+		//{
+		//}
 
 		public People(T[] items)
 		{

@@ -196,7 +196,6 @@ namespace Mice
 				ilProcessor.InsertBefore(firstInstr, instr);
 			}
 			ilProcessor.Body.MaxStackSize = 3;
-			//add local viriable - result of comparison
 			ilProcessor.Body.InitLocals = true;
 			VariableDefinition loc0 = new VariableDefinition(method.Module.Import(typeof(bool)));
 			ilProcessor.Body.Variables.Add(loc0);
@@ -218,19 +217,22 @@ namespace Mice
 			return result;
 		}
 
-		public static void AddStaticProrotypeCall(MethodDefinition method, FieldDefinition prototypeField)
+		public static void AddProrotypeCall(MethodDefinition method, FieldDefinition prototypeField)
 		{
 			GenericInstanceType actionType = CreateActionSetterParameterType(method, method);
 
 			//initialize local variables
 			var ilProcessor = method.Body.GetILProcessor();
 			var firstInstruction = ilProcessor.Body.Instructions.First();
-			
-			ilProcessor.Body.InitLocals = true;
-			VariableDefinition loc0 = new VariableDefinition(actionType);
-			ilProcessor.Body.Variables.Add(loc0);
-			VariableDefinition loc1 = new VariableDefinition(method.Module.Import(typeof(bool)));
-			ilProcessor.Body.Variables.Add(loc1);
+
+			if (prototypeField.IsStatic)
+			{
+				ilProcessor.Body.InitLocals = true;
+				VariableDefinition loc0 = new VariableDefinition(actionType);
+				ilProcessor.Body.Variables.Add(loc0);
+				VariableDefinition loc1 = new VariableDefinition(method.Module.Import(typeof(bool)));
+				ilProcessor.Body.Variables.Add(loc1);
+			}
 
 			var actionsFieldName = method.Name + ActionsPostfix;
 			var actionsField = prototypeField.FieldType.Resolve().Fields.First(f => f.Name == actionsFieldName);
@@ -249,7 +251,6 @@ namespace Mice
 
 			MethodReference invokeAction = actionType.Resolve().Methods.First(m => m.Name == "Invoke");
 			invokeAction = method.Module.Import(invokeAction);
-			//((MethodReference)invokeAction).DeclaringType = actionType;
 			var genericInvokeAction = new GenericInstanceType(invokeAction.DeclaringType);
 			genericInvokeAction.GenericArguments.AddRange(actionType.GenericArguments);
 			invokeAction.DeclaringType = genericInvokeAction;
@@ -261,10 +262,27 @@ namespace Mice
 				paramCount++;
 			}
 
-			var instructions = new[]
+			Instruction[] loadPrototypeFieldInstructions;
+			if (prototypeField.IsStatic)
+			{
+				loadPrototypeFieldInstructions = new[] {
+					ilProcessor.Create(OpCodes.Ldsflda, genericInstancePrototypeField)
+				};
+			}
+			else
+			{
+				loadPrototypeFieldInstructions = new[] {
+					ilProcessor.Create(OpCodes.Ldarg_0),
+					ilProcessor.Create(OpCodes.Ldflda, genericInstancePrototypeField)
+				};
+			}
+
+			var staticPrototypeCallInstructions = new[]
 			{
 				ilProcessor.Create(OpCodes.Nop),
-				ilProcessor.Create(OpCodes.Ldsflda, genericInstancePrototypeField),
+			}.Concat(
+				loadPrototypeFieldInstructions
+			).Concat(new []{
 				ilProcessor.Create(OpCodes.Ldfld, genericInstanceActionsField),
 				ilProcessor.Create(OpCodes.Ldnull),
 				ilProcessor.Create(OpCodes.Ceq),
@@ -273,7 +291,9 @@ namespace Mice
 				ilProcessor.Create(OpCodes.Brtrue_S, firstInstruction),
 
 				ilProcessor.Create(OpCodes.Nop),
-				ilProcessor.Create(OpCodes.Ldsflda, genericInstancePrototypeField),
+			}).Concat(
+				loadPrototypeFieldInstructions
+			).Concat(new []{
 				ilProcessor.Create(OpCodes.Ldfld, genericInstanceActionsField),
 				ilProcessor.Create(OpCodes.Ldtoken, actionType),
 				ilProcessor.Create(OpCodes.Call, getTypeMethod),
@@ -285,7 +305,9 @@ namespace Mice
 				ilProcessor.Create(OpCodes.Brtrue_S, firstInstruction),
 
 				ilProcessor.Create(OpCodes.Nop),
-				ilProcessor.Create(OpCodes.Ldsflda, genericInstancePrototypeField),
+			}).Concat(
+				loadPrototypeFieldInstructions
+			).Concat(new []{
 				ilProcessor.Create(OpCodes.Ldfld, genericInstanceActionsField),
 				ilProcessor.Create(OpCodes.Ldtoken, actionType),
 				ilProcessor.Create(OpCodes.Call, getTypeMethod),
@@ -302,18 +324,16 @@ namespace Mice
 
 				ilProcessor.Create(OpCodes.Nop),
 				ilProcessor.Create(OpCodes.Ldloc_0),
-			}.Concat(
+			}).Concat(
 				Enumerable.Range(0, paramCount).Select(i => ilProcessor.Create(OpCodes.Ldarg, i))
 			)
-			.Concat(new []
-			{
+			.Concat(new []{
 				ilProcessor.Create(OpCodes.Callvirt, invokeAction),
 				ilProcessor.Create(OpCodes.Nop),
 				ilProcessor.Create(OpCodes.Ret),
-			}
-			);
+			});
 
-			foreach (var instruction in instructions)
+			foreach (var instruction in staticPrototypeCallInstructions)
 			{
 				ilProcessor.InsertBefore(firstInstruction, instruction);
 			}

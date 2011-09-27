@@ -70,7 +70,7 @@ namespace Mice
 		{
 			TypeDefinition prototypeType = CreatePrototypeType(type);
 
-			FieldDefinition prototypeField = new FieldDefinition(/*type.Name +*/ "Prototype", FieldAttributes.Public, prototypeType);
+			FieldDefinition prototypeField = new FieldDefinition(type.Name.Replace("`", "_") + "Prototype", FieldAttributes.Public, prototypeType);
 			prototypeField.SetGenericInstanciating(prototypeType);
 			type.Fields.Add(prototypeField);
 
@@ -86,15 +86,17 @@ namespace Mice
 			//create delegate types & fields, patch methods to call delegates
 			foreach (var method in methods)
 			{
-				if (method.IsConstructor)
-				{
-					continue;
-				}
 				if (method.HasGenericParameters)
 				{
 					Generics.InitializeMethod(prototypeType, method);
 					MethodDefinition newMethod = MoveCodeToImplMethod(method);
-					Generics.AddStaticProrotypeCall(method, staticPrototypeField);
+					Generics.AddProrotypeCall(method, staticPrototypeField);
+
+
+					if (!method.IsStatic && !method.IsConstructor)
+					{
+						Generics.AddProrotypeCall(method, prototypeField);
+					}
 				}
 				else
 				{
@@ -116,34 +118,35 @@ namespace Mice
 				}
 			}
 
-			////After using of Mice there always should be a wasy to create an instance of public class
-			////Here we create methods that can call parameterless ctor, evern if there is no parameterless ctor :)
-			//if (!type.IsAbstract)
-			//{
-			//    var privateDefaultCtor =
-			//        type.Methods.SingleOrDefault(m => m.IsConstructor && m.Parameters.Count == 0 && !m.IsPublic && !m.IsStatic);
+			//After using of Mice there always should be a wasy to create an instance of public class
+			//Here we create methods that can call parameterless ctor, evern if there is no parameterless ctor :)
+			if (!type.IsAbstract)
+			{
+				var privateDefaultCtor =
+					type.Methods.SingleOrDefault(m => m.IsConstructor && m.Parameters.Count == 0 && !m.IsPublic && !m.IsStatic);
 
-			//    if (privateDefaultCtor != null)
-			//    {
-			//        var delegateType = CreateDeligateType(privateDefaultCtor, prototypeType, false);
-			//        var delegateField = CreateDeligateField(prototypeType, privateDefaultCtor, delegateType, false);
+				if (privateDefaultCtor != null)
+				{
+					var delegateType = CreateDeligateType(privateDefaultCtor, prototypeType, false);
+					var delegateField = CreateDeligateField(prototypeType, privateDefaultCtor, delegateType, false);
+					delegateField.SetGenericInstanciating(delegateType.DeclaringType);
 
-			//        MethodDefinition newMethod = MoveCodeToImplMethod(privateDefaultCtor);
-			//        AddStaticPrototypeCall(privateDefaultCtor, delegateField, staticPrototypeField);
+					MethodDefinition newMethod = MoveCodeToImplMethod(privateDefaultCtor);
+					AddStaticPrototypeCall(privateDefaultCtor, delegateField, staticPrototypeField);
 
-			//        CreateCallToPrivateCtor(privateDefaultCtor, prototypeType);
-			//    }
-			//    else
-			//    {
-			//        var publicDefaultCtor =
-			//            type.Methods.SingleOrDefault(m => m.IsConstructor && m.Parameters.Count == 0 && m.IsPublic && !m.IsStatic);					
-			//        if (publicDefaultCtor == null) //there is not default ctor, neither private nor public
-			//        {
-			//            privateDefaultCtor = CreateDefaultCtor(type);
-			//            CreateCallToPrivateCtor(privateDefaultCtor, prototypeType);
-			//        }
-			//    }
-			//}
+					CreateCallToPrivateCtor(privateDefaultCtor, prototypeType);
+				}
+				else
+				{
+					var publicDefaultCtor =
+						type.Methods.SingleOrDefault(m => m.IsConstructor && m.Parameters.Count == 0 && m.IsPublic && !m.IsStatic);
+					if (publicDefaultCtor == null) //there is not default ctor, neither private nor public
+					{
+						privateDefaultCtor = CreateDefaultCtor(type);
+						CreateCallToPrivateCtor(privateDefaultCtor, prototypeType);
+					}
+				}
+			}
 		}
 
 		private static MethodDefinition CreateDefaultCtor(TypeDefinition type)
@@ -170,9 +173,13 @@ namespace Mice
 
 		private static MethodDefinition CreateCallToPrivateCtor(MethodDefinition defCtor, TypeDefinition prototypeType)
 		{
-			MethodDefinition result = new MethodDefinition("CallCtor", MethodAttributes.Public, defCtor.DeclaringType);
+			var declaringTypeGenericInstance = new GenericInstanceType(defCtor.DeclaringType);
+			declaringTypeGenericInstance.GenericArguments.AddRange(defCtor.DeclaringType.GenericParameters);
+			MethodDefinition result = new MethodDefinition("CallCtor", MethodAttributes.Public, declaringTypeGenericInstance);
+			var callingCtor = defCtor.MakeGeneric(defCtor.DeclaringType.GenericParameters.ToArray());
+
 			var il = result.Body.GetILProcessor();
-			il.Emit(OpCodes.Newobj, defCtor);
+			il.Emit(OpCodes.Newobj, callingCtor);
 			il.Emit(OpCodes.Ret);
 
 			prototypeType.Methods.Add(result);
@@ -204,6 +211,11 @@ namespace Mice
 
 			result.Parameters.AddRange(method.Parameters.Select(Copy));
 			result.Body.Variables.AddRange(method.Body.Variables.Select(Copy));
+
+			if (result.Body.Variables.Count > 0)
+			{
+				result.Body.InitLocals = true;
+			}
 			result.GenericParameters.AddRange(method.GenericParameters.Select(p => p.Copy(result)));
 
 			var il = result.Body.GetILProcessor();
@@ -305,26 +317,29 @@ namespace Mice
 		private static void AddStaticPrototypeCall(MethodDefinition method, FieldDefinition delegateField, FieldDefinition prototypeField)
 		{
 			Debug.Assert(prototypeField.IsStatic);
+			var prototypeFieldReference = prototypeField.MakeGeneric(prototypeField.DeclaringType.GenericParameters.ToArray());
+			var delegateFieldReference = delegateField.MakeGeneric(delegateField.DeclaringType.GenericParameters.ToArray());
 			var firstOpcode = method.Body.Instructions.First();
 			var il = method.Body.GetILProcessor();
 
 			TypeDefinition delegateType = delegateField.FieldType.Resolve();
-			var invokeMethod = delegateType.Methods.Single(m => m.Name == "Invoke");
+			var invokeMethodDefinition = delegateType.Methods.Single(m => m.Name == "Invoke");
 			int allParamsCount = method.Parameters.Count + (method.IsStatic ? 0 : 1); //all params and maybe this
+			var invokeMethodReference = invokeMethodDefinition.MakeGeneric(method.DeclaringType.GenericParameters.ToArray());
 
 			var instructions = new[]
 			{
-				il.Create(OpCodes.Ldsflda, prototypeField),
-				il.Create(OpCodes.Ldfld, delegateField),
+				il.Create(OpCodes.Ldsflda, prototypeFieldReference),
+				il.Create(OpCodes.Ldfld, delegateFieldReference),
 				il.Create(OpCodes.Brfalse, firstOpcode),
 
-				il.Create(OpCodes.Ldsflda, prototypeField),
-				il.Create(OpCodes.Ldfld, delegateField),
+				il.Create(OpCodes.Ldsflda, prototypeFieldReference),
+				il.Create(OpCodes.Ldfld, delegateFieldReference),
 			}.Concat(
 				Enumerable.Range(0, allParamsCount).Select(i => il.Create(OpCodes.Ldarg, i))
 			).Concat(new[]
 			{
-				il.Create(OpCodes.Callvirt, invokeMethod),
+				il.Create(OpCodes.Callvirt, invokeMethodReference),
 				il.Create(OpCodes.Ret),
 			});
 
@@ -335,28 +350,33 @@ namespace Mice
 		private static void AddInstancePrototypeCall(MethodDefinition method, FieldDefinition delegateField, FieldDefinition prototypeField)
 		{
 			Debug.Assert(!prototypeField.IsStatic);
+			var prototypeFieldReference = prototypeField.MakeGeneric(prototypeField.DeclaringType.GenericParameters.ToArray());
+			var delegateFieldReference = delegateField.MakeGeneric(delegateField.DeclaringType.GenericParameters.ToArray());
 			var firstOpcode = method.Body.Instructions.First();
 			var il = method.Body.GetILProcessor();
 
 			TypeDefinition  delegateType = delegateField.FieldType.Resolve();
-			var invokeMethod = delegateType.Methods.Single(m => m.Name == "Invoke");
+
+			var invokeMethodDefinition = delegateType.Methods.Single(m => m.Name == "Invoke");
 			int allParamsCount = method.Parameters.Count + 1; //all params and this
+
+			var invokeMethodReference = invokeMethodDefinition.MakeGeneric(method.DeclaringType.GenericParameters.ToArray());
 
 			var instructions = new[]
 			{
 				il.Create(OpCodes.Ldarg_0),
-				il.Create(OpCodes.Ldflda, prototypeField),
-				il.Create(OpCodes.Ldfld, delegateField),
+				il.Create(OpCodes.Ldflda, prototypeFieldReference),
+				il.Create(OpCodes.Ldfld, delegateFieldReference),
 				il.Create(OpCodes.Brfalse, firstOpcode),
 
 				il.Create(OpCodes.Ldarg_0),
-				il.Create(OpCodes.Ldflda, prototypeField),
-				il.Create(OpCodes.Ldfld, delegateField),
+				il.Create(OpCodes.Ldflda, prototypeFieldReference),
+				il.Create(OpCodes.Ldfld, delegateFieldReference),
 			}.Concat(
 				Enumerable.Range(0, allParamsCount).Select(i => il.Create(OpCodes.Ldarg, i))
 			).Concat(new[]
 			{
-				il.Create(OpCodes.Callvirt, invokeMethod),
+				il.Create(OpCodes.Callvirt, invokeMethodReference),
 				il.Create(OpCodes.Ret),
 			});
 
@@ -417,8 +437,6 @@ namespace Mice
 					result.GenericParameters.Add(newGenPar);
 				}
 			}
-			//add generic parameters from origin method
-			//result.GenericParameters.AddRange(method.GenericParameters.Select(p => p.Copy(result)));
 
 			//create constructor
 			var constructor = new MethodDefinition(".ctor",
@@ -448,10 +466,6 @@ namespace Mice
 				var paramToAdd = param.Copy();
 				paramToAdd.SetGenericInstanciating(param.ParameterType);
 				invoke.Parameters.Add(paramToAdd);
-				//if (paramToAdd.ParameterType.IsGenericParameter)
-				//{
-				//    GenericParameter gpt = (GenericParameter)paramToAdd.ParameterType;
-				//}
 			}
 			
 			result.Methods.Add(invoke); 
@@ -529,6 +543,16 @@ namespace Mice
 
 			reference.Parameters.AddRange(self.Parameters.Select(p => new ParameterDefinition(p.ParameterType)));
 			reference.GenericParameters.AddRange(self.GenericParameters.Select(p => new GenericParameter(p.Name, reference)));
+
+			return reference;
+		}
+
+		public static FieldReference MakeGeneric(this FieldReference self, params TypeReference[] arguments)
+		{
+			var reference = new FieldReference(self.Name, self.FieldType)
+			{
+				DeclaringType = self.DeclaringType.MakeGenericType(arguments),
+			};
 
 			return reference;
 		}
