@@ -57,7 +57,7 @@ namespace Mice
 				//type.GenericParameters.Count == 0 &&
 				!type.IsValueType && 
 				!type.IsInterface &&
-				type.BaseType.Name != "MulticastDelegate";
+				type.BaseType.Name != typeof(MulticastDelegate).Name;
 		}
 
 		private static void Using()
@@ -69,13 +69,12 @@ namespace Mice
 		private static void ProcessType(TypeDefinition type)
 		{
 			TypeDefinition prototypeType = CreatePrototypeType(type);
+			GenericInstanceType prototypeGenInstance = prototypeType.AsInstance();
 
-			FieldDefinition prototypeField = new FieldDefinition(type.Name.Replace("`", "_") + "Prototype", FieldAttributes.Public, prototypeType);
-			prototypeField.SetGenericInstanciating(prototypeType);
+			FieldDefinition prototypeField = new FieldDefinition(type.Name.Replace("`", "_") + "Prototype", FieldAttributes.Public, prototypeGenInstance);
 			type.Fields.Add(prototypeField);
 
-			FieldDefinition staticPrototypeField = new FieldDefinition("StaticPrototype", FieldAttributes.Public | FieldAttributes.Static , prototypeType);
-			staticPrototypeField.SetGenericInstanciating(prototypeType);
+			FieldDefinition staticPrototypeField = new FieldDefinition("StaticPrototype", FieldAttributes.Public | FieldAttributes.Static, prototypeGenInstance);
 			type.Fields.Add(staticPrototypeField);
 
 			MethodDefinition[] methods = type.Methods.Where(IsMethodToBeProcessed).ToArray();
@@ -103,9 +102,7 @@ namespace Mice
 					bool includeParamsToName = name2Count[method.Name] > 1;
 
 					var delegateType = CreateDeligateType(method, prototypeType, includeParamsToName);
-					var delegateField = CreateDeligateField(prototypeType, method, delegateType, includeParamsToName);
-
-					delegateField.SetGenericInstanciating(delegateType);
+					var delegateField = CreateDeligateField(prototypeType, method, delegateType.AsInstance(), includeParamsToName);
 
 					MethodDefinition newMethod = MoveCodeToImplMethod(method);
 
@@ -118,7 +115,7 @@ namespace Mice
 				}
 			}
 
-			//After using of Mice there always should be a wasy to create an instance of public class
+			//After using of Mice there always should be a way to create an instance of public class
 			//Here we create methods that can call parameterless ctor, evern if there is no parameterless ctor :)
 			if (!type.IsAbstract)
 			{
@@ -128,8 +125,7 @@ namespace Mice
 				if (privateDefaultCtor != null)
 				{
 					var delegateType = CreateDeligateType(privateDefaultCtor, prototypeType, false);
-					var delegateField = CreateDeligateField(prototypeType, privateDefaultCtor, delegateType, false);
-					delegateField.SetGenericInstanciating(delegateType.DeclaringType);
+					var delegateField = CreateDeligateField(prototypeType, privateDefaultCtor, delegateType.AsInstance(), false);
 
 					MethodDefinition newMethod = MoveCodeToImplMethod(privateDefaultCtor);
 					AddStaticPrototypeCall(privateDefaultCtor, delegateField, staticPrototypeField);
@@ -393,21 +389,12 @@ namespace Mice
 			type.NestedTypes.Add(result);
 			result.DeclaringType = type;
 
-			//generic task
-			if (type.HasGenericParameters)
-			{
-				foreach (GenericParameter genParam in type.GenericParameters)
-				{
-					GenericParameter newGenPar = new GenericParameter(genParam.Name, result);
-					newGenPar.Constraints.AddRange(genParam.Constraints.ToArray());
-					result.GenericParameters.Add(newGenPar);
-				}
-			}
+			result.GenericParameters.AddRange(type.GenericParameters.Select(p => p.Copy(result)));
 
 			return result;
 		}
 
-		private static FieldDefinition CreateDeligateField(TypeDefinition hostType, MethodDefinition method, TypeDefinition delegateType, bool includeParamsToName)
+		private static FieldDefinition CreateDeligateField(TypeDefinition hostType, MethodDefinition method, TypeReference delegateType, bool includeParamsToName)
 		{
 			var fieldName = ComposeFullMethodName(method, includeParamsToName);
 
@@ -427,16 +414,9 @@ namespace Mice
 
 			TypeDefinition result = new TypeDefinition(null, deligateName,
 				TypeAttributes.Sealed | TypeAttributes.NestedPublic | TypeAttributes.RTSpecialName , multicastDeligateType);
+			
 			//add generic parameters from container type
-			if (parentType.HasGenericParameters)
-			{
-				foreach (GenericParameter genParam in parentType.GenericParameters)
-				{
-					GenericParameter newGenPar = new GenericParameter(genParam.Name, result);
-					newGenPar.Constraints.AddRange(genParam.Constraints.ToArray());
-					result.GenericParameters.Add(newGenPar);
-				}
-			}
+			result.GenericParameters.AddRange(parentType.GenericParameters.Select(p => p.Copy(result)));
 
 			//create constructor
 			var constructor = new MethodDefinition(".ctor",
@@ -456,15 +436,13 @@ namespace Mice
 			invoke.IsRuntime = true;
 			if (!method.IsStatic)
 			{
-				var selfParameter = new ParameterDefinition("self", ParameterAttributes.None, method.DeclaringType);
+				var selfParameter = new ParameterDefinition("self", ParameterAttributes.None, method.DeclaringType.AsInstance());
 				//instanciate generic type
-				selfParameter.SetGenericInstanciating(method.DeclaringType);
 				invoke.Parameters.Add(selfParameter);
 			}
 			foreach (var param in method.Parameters)
 			{
 				var paramToAdd = param.Copy();
-				paramToAdd.SetGenericInstanciating(param.ParameterType);
 				invoke.Parameters.Add(paramToAdd);
 			}
 			
@@ -578,26 +556,12 @@ namespace Mice
 				collection.Add(item);
 		}
 
-		public static void SetGenericInstanciating(this FieldReference fieldDefinition, TypeReference typeDefinition)
+		public static GenericInstanceType AsInstance(this TypeReference type)
 		{
-			if (typeDefinition.HasGenericParameters)
-			{
-				var genericInstanceType = new GenericInstanceType(typeDefinition);
-				genericInstanceType.GenericArguments.AddRange(typeDefinition.GenericParameters);
-				fieldDefinition.FieldType = genericInstanceType;
-			}
+			var result = new GenericInstanceType(type);
+			result.GenericArguments.AddRange(type.GenericParameters);
+			return result;
 		}
-
-		public static void SetGenericInstanciating(this ParameterReference parameterDefinition, TypeReference typeDefinition)
-		{
-			if (typeDefinition.HasGenericParameters)
-			{
-				var genericInstanceType = new GenericInstanceType(typeDefinition);
-				genericInstanceType.GenericArguments.AddRange(typeDefinition.GenericParameters);
-				parameterDefinition.ParameterType = genericInstanceType;
-			}
-		}
-
 		#endregion
 	}
 }

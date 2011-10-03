@@ -9,9 +9,9 @@ namespace Cheese
 	{
 		private List<T> _data = new List<T>();
 
-		//public People()
-		//{
-		//}
+		public People()
+		{
+		}
 
 		public People(T[] items)
 		{
@@ -21,6 +21,16 @@ namespace Cheese
 		public void Add(T item)
 		{
 			_data.Add(item);
+		}
+
+		public T Get(int index)
+		{
+			return _data[index];
+		}
+
+		public T this[int index]
+		{
+			get { return _data[index]; }
 		}
 
 		public void AddRange(IEnumerable<T> items)
