@@ -54,7 +54,7 @@ namespace Mice.Tests
 			var p = new People<Doctor>();
 			bool soldierCastWasCalled = false;
 			bool civilianCastWasCalled = false;
-			p.People_1Prototype.set_Cast<Soldier>((self) =>
+			People<Doctor>.StaticPrototype.set_Cast<Soldier>((self) =>
 			{
 				soldierCastWasCalled = true;
 				return null;
@@ -65,8 +65,12 @@ namespace Mice.Tests
 				return null;
 			});
 			Assert.That(p.Cast<Soldier>(), Is.Null);
-			Assert.That(soldierCastWasCalled);
+			Assert.That(soldierCastWasCalled, Is.True);
 			Assert.That(civilianCastWasCalled, Is.False);
+
+			Assert.That(p.Cast<Civilian>(), Is.Null);
+			Assert.That(soldierCastWasCalled, Is.True);
+			Assert.That(civilianCastWasCalled, Is.True);
 			
 		}
 	}

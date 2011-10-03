@@ -29,9 +29,8 @@ namespace Mice
 		{
 			if (method.HasGenericParameters)
 			{
-				var field = new FieldDefinition(method.Name + ActionsPostfix, FieldAttributes.Public, method.Module.Import(typeof(Dictionary<Type, object>)));
+				var field = new FieldDefinition(method.Name + ActionsPostfix, FieldAttributes.Assembly, method.Module.Import(ActionsType));
 				declaringType.Fields.Add(field);
-				GenericInstanceType declaringTypeForField = new GenericInstanceType(declaringType);
 				return GetGenericInstanceField(field);
 			}
 			return null;
@@ -56,9 +55,7 @@ namespace Mice
 			//make method with generic parameters
 			MethodDefinition actionSetter = new MethodDefinition(SetActionPrefix + method.Name, MethodAttributes.Public | MethodAttributes.HideBySig, method.Module.Import(typeof(void)));
 			actionSetter.DeclaringType = destinationType;
-			var copyGenericParameters = CopyGenericParameters(method.GenericParameters, actionSetter);
-
-			actionSetter.GenericParameters.AddRange(copyGenericParameters);
+			actionSetter.GenericParameters.AddRange(method.GenericParameters.Select(p => p.Copy(actionSetter)));
 
 			var actionParameterType = CreateActionSetterParameterType(method, actionSetter);
 			ParameterDefinition actionParameter = new ParameterDefinition(actionParameterType);
@@ -73,70 +70,20 @@ namespace Mice
 
 		public static GenericInstanceType CreateActionSetterParameterType(MethodDefinition originalMethod, MethodDefinition containingParameterMethod)
 		{
-			string typeName;
-			int paramsCount = originalMethod.Parameters.Count;
+			//there must be tuples here, but we don't have tuples in .NET 3.5
+			Type[] tupleTypes = new[] { typeof(Func<>), typeof(Func<,>), typeof(Func<,,>), typeof(Func<,,,>), typeof(Func<,,,,>), typeof(Func<,,,,>) };
 
-			//self parameter
-			if (!originalMethod.IsStatic)
-			{
-				paramsCount++;
-			}
+			int genParamsCount = originalMethod.GenericParameters.Count;
+			if (genParamsCount > tupleTypes.Length)
+				throw new InvalidOperationException("Mice does not support methods with more than" + tupleTypes.Length + "generic parameters");
 
-			if (originalMethod.ReturnType.Name != "Void")
-			{
-				paramsCount += 1;//1 for return type
-				typeName = "System.Func`" + (paramsCount);
-			}
-			else
-			{
-				typeName = "System.Action`" + (paramsCount);
-			}
-			System.Reflection.Assembly winAssembly;
-
-			if (typeName == "System.Action`1")
-			{
-				winAssembly = System.Reflection.Assembly.Load("mscorlib, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089");
-			}
-			else 
-			{
-				winAssembly = System.Reflection.Assembly.Load("System.Core, Version=3.5.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089");
-			}
-			var origType = winAssembly.GetType(typeName);
-			var assembly = AssemblyDefinition.ReadAssembly(winAssembly.Location);
-			var module = assembly.Modules[0];
+			var origType = tupleTypes[genParamsCount - 1];
+			
 			var actionTypeReference = originalMethod.Module.Import(origType);
-			actionTypeReference.GenericParameters.AddRange(containingParameterMethod.GenericParameters);
+			//actionTypeReference.GenericParameters.AddRange(containingParameterMethod.GenericParameters);
 
 			var genericInstanceType = new GenericInstanceType(actionTypeReference);
-
-			//add self parameter
-			if (!originalMethod.IsStatic)
-			{
-				if (containingParameterMethod.DeclaringType.DeclaringType != null)
-				{
-					var baseTypeInstance = new GenericInstanceType(containingParameterMethod.DeclaringType.DeclaringType);
-					baseTypeInstance.GenericArguments.AddRange(containingParameterMethod.DeclaringType.GenericParameters);
-					genericInstanceType.GenericArguments.Add(baseTypeInstance);
-				}
-				else
-				{
-					var baseTypeInstance = new GenericInstanceType(containingParameterMethod.DeclaringType);
-					baseTypeInstance.GenericArguments.AddRange(containingParameterMethod.DeclaringType.GenericParameters);
-					genericInstanceType.GenericArguments.Add(baseTypeInstance);
-				}
-			}
-
-			//add function parameters
-			foreach (ParameterDefinition parameter in originalMethod.Parameters)
-			{
-				genericInstanceType.GenericArguments.Add(parameter.ParameterType);
-			}
-
-			//add return type parameter if presented
-			if (originalMethod.ReturnType.Name != "Void")
-			{
-				genericInstanceType.GenericArguments.Add(originalMethod.ReturnType);
-			}
+			genericInstanceType.GenericArguments.AddRange(originalMethod.GenericParameters);
 
 			return genericInstanceType;
 		}
@@ -203,9 +150,9 @@ namespace Mice
 			ilProcessor.Body.OptimizeMacros();
 		}
 
-		public static Mono.Collections.Generic.Collection<GenericParameter> CopyGenericParameters(Mono.Collections.Generic.Collection<GenericParameter> genericParameters, IGenericParameterProvider ownerType)
+		public static Collection<GenericParameter> CopyGenericParameters(Collection<GenericParameter> genericParameters, IGenericParameterProvider ownerType)
 		{
-			Mono.Collections.Generic.Collection<GenericParameter> result = new Mono.Collections.Generic.Collection<GenericParameter>();
+			Collection<GenericParameter> result = new Collection<GenericParameter>();
 
 			foreach (GenericParameter genericParameter in genericParameters)
 			{

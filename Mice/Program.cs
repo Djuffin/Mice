@@ -43,7 +43,8 @@ namespace Mice
 				assembly.Write(victimName, writerParams);
 				return 0;
 			}
-			catch (Exception e)
+			//catch (Exception e)
+			catch (ArgumentException e)
 			{
 				Console.WriteLine("Error. " + e.ToString());
 				return 1;
@@ -54,7 +55,6 @@ namespace Mice
 		{
 			return type.IsPublic && 
 				!type.IsEnum &&
-				//type.GenericParameters.Count == 0 &&
 				!type.IsValueType && 
 				!type.IsInterface &&
 				type.BaseType.Name != typeof(MulticastDelegate).Name;
@@ -161,7 +161,6 @@ namespace Mice
 		private static bool IsMethodToBeProcessed(MethodDefinition m)
 		{
 			return (m.IsPublic) && 
-				//m.GenericParameters.Count == 0 &&
 				!m.IsAbstract && 
 				!(m.IsStatic && m.IsConstructor);
 		}
@@ -477,7 +476,7 @@ namespace Mice
 
 		#region extensions
 
-		private static GenericParameter Copy(this GenericParameter gParam, IGenericParameterProvider owner)
+		public static GenericParameter Copy(this GenericParameter gParam, IGenericParameterProvider owner)
 		{
 			var result = new GenericParameter(gParam.Name, owner) { Attributes = gParam.Attributes };
 			result.Constraints.AddRange(gParam.Constraints);
@@ -497,7 +496,7 @@ namespace Mice
 
 		public static MethodReference MakeGenericMethod(this MethodReference self, params TypeReference[] arguments)
 		{
-			if (self.GenericParameters.Count == 0)
+			if (!self.HasGenericParameters)
 				return self;
 
 			if (self.GenericParameters.Count != arguments.Length)
