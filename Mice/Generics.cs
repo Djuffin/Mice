@@ -57,7 +57,7 @@ namespace Mice
 			actionSetter.DeclaringType = destinationType;
 			actionSetter.GenericParameters.AddRange(method.GenericParameters.Select(p => p.Copy(actionSetter)));
 
-			var actionParameterType = CreateActionSetterParameterType(method, actionSetter);
+			var actionParameterType = CreateActionSetterParameterType(method);
 			ParameterDefinition actionParameter = new ParameterDefinition(actionParameterType);
 			actionParameter.Name = ActionParameterName;
 
@@ -68,22 +68,33 @@ namespace Mice
 			destinationType.Methods.Add(actionSetter);
 		}
 
-		public static GenericInstanceType CreateActionSetterParameterType(MethodDefinition originalMethod, MethodDefinition containingParameterMethod)
+		public static GenericInstanceType CreateActionSetterParameterType(MethodDefinition originalMethod)
 		{
 			//there must be tuples here, but we don't have tuples in .NET 3.5
 			Type[] tupleTypes = new[] { typeof(Func<>), typeof(Func<,>), typeof(Func<,,>), typeof(Func<,,,>), typeof(Func<,,,,>), typeof(Func<,,,,>) };
 
-			int genParamsCount = originalMethod.GenericParameters.Count;
+			int genParamsCount = originalMethod.Parameters.Count;
+			if (!originalMethod.IsStatic)
+				genParamsCount++; //self parameter
+
 			if (genParamsCount > tupleTypes.Length)
 				throw new InvalidOperationException("Mice does not support methods with more than" + tupleTypes.Length + "generic parameters");
 
 			var origType = tupleTypes[genParamsCount - 1];
 			
 			var actionTypeReference = originalMethod.Module.Import(origType);
-			//actionTypeReference.GenericParameters.AddRange(containingParameterMethod.GenericParameters);
 
 			var genericInstanceType = new GenericInstanceType(actionTypeReference);
-			genericInstanceType.GenericArguments.AddRange(originalMethod.GenericParameters);
+			if (!originalMethod.IsStatic)
+			{
+				genericInstanceType.GenericArguments.Add(originalMethod.DeclaringType);	
+			}
+			genericInstanceType.GenericArguments.AddRange(originalMethod.Parameters.Select(p => p.ParameterType));
+			if (originalMethod.ReturnType.FullName != originalMethod.Module.Import(typeof(void)).FullName)
+			{
+				genericInstanceType.GenericArguments.Add(originalMethod.ReturnType);
+			}
+
 
 			return genericInstanceType;
 		}
@@ -166,9 +177,8 @@ namespace Mice
 
 		public static void AddProrotypeCall(MethodDefinition method, FieldDefinition prototypeField)
 		{
-			GenericInstanceType actionType = CreateActionSetterParameterType(method, method);
+			GenericInstanceType actionType = CreateActionSetterParameterType(method);
 
-			//initialize local variables
 			var ilProcessor = method.Body.GetILProcessor();
 			var firstInstruction = ilProcessor.Body.Instructions.First();
 

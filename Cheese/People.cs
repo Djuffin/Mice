@@ -7,6 +7,8 @@ namespace Cheese
 {
 	public class People<T> where T:Person
 	{
+		public delegate void F<K, V>(K a);
+
 		private List<T> _data = new List<T>();
 
 		public People()

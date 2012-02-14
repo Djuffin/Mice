@@ -44,7 +44,7 @@ namespace Mice
 				return 0;
 			}
 			//catch (Exception e)
-			catch (ArgumentException e)
+			catch (ArgumentNullException e)
 			{
 				Console.WriteLine("Error. " + e.ToString());
 				return 1;
@@ -85,24 +85,31 @@ namespace Mice
 			//create delegate types & fields, patch methods to call delegates
 			foreach (var method in methods)
 			{
+				bool includeParamsToName = name2Count[method.Name] > 1;
+				var fieldName = ComposeFullMethodName(method, includeParamsToName);
 				if (method.HasGenericParameters)
 				{
-					Generics.InitializeMethod(prototypeType, method);
+					var delegateType = CreateDeligateType(method, prototypeType, includeParamsToName);
+					var delegateDictionaryType = method.Module.Import(typeof(Dictionary<RuntimeTypeHandle, MulticastDelegate>));
+					//var delegateDictionaryField = CreateField(prototypeType, delegateDictionaryType.AsInstance(), false, fieldName);
+					//AddGenericActionSetter(prototypeType, method, delegateDictionaryField);
+
+					//Generics.InitializeMethod(prototypeType, method);
 					MethodDefinition newMethod = MoveCodeToImplMethod(method);
-					Generics.AddProrotypeCall(method, staticPrototypeField);
+					//Generics.AddProrotypeCall(method, staticPrototypeField);
 
 
-					if (!method.IsStatic && !method.IsConstructor)
+					/*if (!method.IsStatic && !method.IsConstructor)
 					{
 						Generics.AddProrotypeCall(method, prototypeField);
-					}
+					}*/
 				}
 				else
 				{
-					bool includeParamsToName = name2Count[method.Name] > 1;
+					
 
 					var delegateType = CreateDeligateType(method, prototypeType, includeParamsToName);
-					var delegateField = CreateDeligateField(prototypeType, method, delegateType.AsInstance(), includeParamsToName);
+					var delegateField = CreateField(prototypeType, delegateType.AsInstance(), true, fieldName);
 
 					MethodDefinition newMethod = MoveCodeToImplMethod(method);
 
@@ -115,6 +122,61 @@ namespace Mice
 				}
 			}
 
+			ExposePublicCtor(type, staticPrototypeField, prototypeType);
+		}
+
+		private static void AddGenericActionSetter(TypeDefinition destinationType, MethodDefinition method, FieldReference actionsField)
+		{
+			//make method with generic parameters
+			MethodDefinition actionSetter = new MethodDefinition("set_" + method.Name, MethodAttributes.Public | MethodAttributes.HideBySig, method.Module.Import(typeof(void)));
+			actionSetter.DeclaringType = destinationType;
+			actionSetter.ReturnType = method.Module.Import(typeof (void));
+			actionSetter.GenericParameters.AddRange(method.GenericParameters.Select(p => p.Copy(actionSetter)));
+			actionSetter.Parameters.Add(new ParameterDefinition("action", ParameterAttributes.None, destinationType));
+			destinationType.Methods.Add(actionSetter);
+
+			ILProcessor ilProcessor = method.Body.GetILProcessor();
+
+			/*var module = actionsField.Module;
+			var dictType = actionsField.FieldType.Resolve();
+			MethodReference setItemMethod = module.Import(dictType.Methods.Single(m => m.Name == "set_Item"));
+			MethodReference dictCtorMethod = module.Import(dictType.Methods.Single(m => m.Name == ".ctor" && m.Parameters.Count == 0));
+
+			var setDelegateInstructions = new[]
+			{
+				ilProcessor.Create(OpCodes.Ldfld, actionsField),
+				ilProcessor.Create(OpCodes.Ldtoken, actionSetter.Parameters[0].ParameterType),
+				ilProcessor.Create(OpCodes.Ldarg_1),
+				ilProcessor.Create(OpCodes.Callvirt, setItemMethod),
+				ilProcessor.Create(OpCodes.Ret)
+			};
+
+			var checkAndCreateDictInstructions = new[]
+			{
+				//initialize actionsField if it is null
+				ilProcessor.Create(OpCodes.Ldarg_0),
+				ilProcessor.Create(OpCodes.Ldfld, actionsField),
+				ilProcessor.Create(OpCodes.Brfalse_S, setDelegateInstructions[0]),
+
+				//instanciate actions fiels
+				ilProcessor.Create(OpCodes.Newobj, dictCtorMethod),
+				ilProcessor.Create(OpCodes.Stfld, actionsField),
+			};
+
+			foreach (var instr in checkAndCreateDictInstructions)
+				ilProcessor.Append(instr);
+
+			foreach (var instr in setDelegateInstructions)
+				ilProcessor.Append(instr);
+
+			ilProcessor.Body.MaxStackSize = 3;
+			ilProcessor.Body.InitLocals = true;*/
+
+			
+		}
+
+		private static void ExposePublicCtor(TypeDefinition type, FieldDefinition staticPrototypeField, TypeDefinition prototypeType)
+		{
 			//After using of Mice there always should be a way to create an instance of public class
 			//Here we create methods that can call parameterless ctor, evern if there is no parameterless ctor :)
 			if (!type.IsAbstract)
@@ -125,7 +187,7 @@ namespace Mice
 				if (privateDefaultCtor != null)
 				{
 					var delegateType = CreateDeligateType(privateDefaultCtor, prototypeType, false);
-					var delegateField = CreateDeligateField(prototypeType, privateDefaultCtor, delegateType.AsInstance(), false);
+					var delegateField = CreateField(prototypeType, delegateType.AsInstance(), true, ComposeFullMethodName(privateDefaultCtor, false) );
 
 					MethodDefinition newMethod = MoveCodeToImplMethod(privateDefaultCtor);
 					AddStaticPrototypeCall(privateDefaultCtor, delegateField, staticPrototypeField);
@@ -204,8 +266,8 @@ namespace Mice
 			if (method.IsConstructor)
 				result.IsSpecialName = false;
 
-			result.Parameters.AddRange(method.Parameters.Select(Copy));
-			result.Body.Variables.AddRange(method.Body.Variables.Select(Copy));
+			result.Parameters.AddRange(method.Parameters.Select(p => p.Copy()));
+			result.Body.Variables.AddRange(method.Body.Variables.Select(c => c.Copy()));
 
 			if (result.Body.Variables.Count > 0)
 			{
@@ -393,11 +455,9 @@ namespace Mice
 			return result;
 		}
 
-		private static FieldDefinition CreateDeligateField(TypeDefinition hostType, MethodDefinition method, TypeReference delegateType, bool includeParamsToName)
+		private static FieldDefinition CreateField(TypeDefinition hostType, TypeReference fieldType, bool isPublic, string fieldName)
 		{
-			var fieldName = ComposeFullMethodName(method, includeParamsToName);
-
-			FieldDefinition field = new FieldDefinition(fieldName, FieldAttributes.Public, delegateType);
+			FieldDefinition field = new FieldDefinition(fieldName, isPublic ? FieldAttributes.Public : FieldAttributes.Assembly, fieldType);
 			hostType.Fields.Add(field);
 			return field;
 		}
@@ -416,6 +476,8 @@ namespace Mice
 			
 			//add generic parameters from container type
 			result.GenericParameters.AddRange(parentType.GenericParameters.Select(p => p.Copy(result)));
+			var methodGenArgs = method.GenericParameters.Select(p => p.Copy(result)).ToArray();
+			result.GenericParameters.AddRange(methodGenArgs);
 
 			//create constructor
 			var constructor = new MethodDefinition(".ctor",
@@ -444,6 +506,7 @@ namespace Mice
 				var paramToAdd = param.Copy();
 				invoke.Parameters.Add(paramToAdd);
 			}
+			result.GenericParameters.AddRange(methodGenArgs);
 			
 			result.Methods.Add(invoke); 
 
@@ -474,93 +537,5 @@ namespace Mice
 			return string.Join("_", partsOfName.ToArray());
 		}
 
-		#region extensions
-
-		public static GenericParameter Copy(this GenericParameter gParam, IGenericParameterProvider owner)
-		{
-			var result = new GenericParameter(gParam.Name, owner) { Attributes = gParam.Attributes };
-			result.Constraints.AddRange(gParam.Constraints);
-			result.CustomAttributes.AddRange(gParam.CustomAttributes);
-			return result;
-		}
-
-		private static ParameterDefinition Copy(this ParameterDefinition param)
-		{
-			return new ParameterDefinition(param.Name, param.Attributes, param.ParameterType);
-		}
-
-		private static VariableDefinition Copy(this VariableDefinition variable)
-		{
-			return new VariableDefinition(variable.Name, variable.VariableType);
-		}
-
-		public static MethodReference MakeGenericMethod(this MethodReference self, params TypeReference[] arguments)
-		{
-			if (!self.HasGenericParameters)
-				return self;
-
-			if (self.GenericParameters.Count != arguments.Length)
-				throw new ArgumentException();
-
-			var instance = new GenericInstanceMethod(self);
-			instance.GenericArguments.AddRange(arguments);
-
-			return instance;
-		}
-
-		public static MethodReference MakeGeneric(this MethodReference self, params TypeReference[] arguments)
-		{
-			var reference = new MethodReference(self.Name, self.ReturnType)
-			{
-				DeclaringType = self.DeclaringType.MakeGenericType(arguments),
-				HasThis = self.HasThis,
-				ExplicitThis = self.ExplicitThis,
-				CallingConvention = self.CallingConvention,
-			};
-
-			reference.Parameters.AddRange(self.Parameters.Select(p => new ParameterDefinition(p.ParameterType)));
-			reference.GenericParameters.AddRange(self.GenericParameters.Select(p => new GenericParameter(p.Name, reference)));
-
-			return reference;
-		}
-
-		public static FieldReference MakeGeneric(this FieldReference self, params TypeReference[] arguments)
-		{
-			var reference = new FieldReference(self.Name, self.FieldType)
-			{
-				DeclaringType = self.DeclaringType.MakeGenericType(arguments),
-			};
-
-			return reference;
-		}
-
-		public static TypeReference MakeGenericType(this TypeReference self, params TypeReference[] arguments)
-		{
-			if (self.GenericParameters.Count == 0)
-				return self;
-
-			if (self.GenericParameters.Count != arguments.Length)
-				throw new ArgumentException();
-
-			var instance = new GenericInstanceType(self);
-			instance.GenericArguments.AddRange(arguments);
-
-			return instance;
-		}
-
-		public static void AddRange<T1, T2>(this Mono.Collections.Generic.Collection<T1> collection, IEnumerable<T2> items)
-			where T2 : T1
-		{
-			foreach (var item in items)
-				collection.Add(item);
-		}
-
-		public static GenericInstanceType AsInstance(this TypeReference type)
-		{
-			var result = new GenericInstanceType(type);
-			result.GenericArguments.AddRange(type.GenericParameters);
-			return result;
-		}
-		#endregion
 	}
 }
